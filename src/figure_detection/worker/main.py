@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import time
@@ -7,6 +8,7 @@ from sqlalchemy import or_, select
 
 from figure_detection.domain.enums import JobKind, JobStatus, VideoState
 from figure_detection.pipeline.analysis import analyze_video
+from figure_detection.pipeline.render import render_video
 from figure_detection.settings import get_settings
 from figure_detection.storage.database import SessionLocal, create_schema
 from figure_detection.storage.models import Job, Video
@@ -70,12 +72,23 @@ def process_job(job_id: str) -> None:
             session.commit()
 
         try:
-            if job.kind != JobKind.ANALYSIS:
+            if job.kind == JobKind.ANALYSIS:
+                detector = UltralyticsPersonDetector()
+                tracker = BoxMotPersonTracker()
+                reid = BoxMotReIdEncoder()
+                analyze_video(session, video, detector, tracker, reid, progress)
+            elif job.kind in {JobKind.PREVIEW, JobKind.RENDER}:
+                revision_id = json.loads(job.payload_json)["revision_id"]
+                artifact = render_video(
+                    session,
+                    video,
+                    revision_id,
+                    preview_seconds=10 if job.kind == JobKind.PREVIEW else None,
+                    progress=progress,
+                )
+                job.result_json = json.dumps({"artifact_id": artifact.id})
+            else:
                 raise NotImplementedError(f"Unsupported job kind: {job.kind}")
-            detector = UltralyticsPersonDetector()
-            tracker = BoxMotPersonTracker()
-            reid = BoxMotReIdEncoder()
-            analyze_video(session, video, detector, tracker, reid, progress)
             job.status = JobStatus.SUCCEEDED
             job.stage = "complete"
             job.progress = 1.0

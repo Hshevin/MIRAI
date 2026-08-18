@@ -3,18 +3,24 @@ import json
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from figure_detection.api.schemas import (
     HealthResponse,
+    IdentityOverrideCreate,
     JobResponse,
+    MaskPromptCreate,
     PersonResponse,
+    RevisionEditResponse,
+    SelectionCreate,
+    SelectionRevisionResponse,
     ThumbnailResponse,
     TimelineDetectionResponse,
     VideoResponse,
@@ -24,12 +30,17 @@ from figure_detection.media.probe import MediaProbeError, probe_media
 from figure_detection.settings import get_settings
 from figure_detection.storage.database import create_schema, get_session
 from figure_detection.storage.models import (
+    Artifact,
     Detection,
     Frame,
     GlobalPerson,
+    IdentityOverride,
     Job,
+    MaskPrompt,
     PersonMembership,
+    SelectionRevision,
     Thumbnail,
+    Tracklet,
     Video,
 )
 
@@ -137,6 +148,27 @@ def get_video(video_id: str, session: Annotated[Session, Depends(get_session)]) 
     if video is None:
         raise HTTPException(status_code=404, detail="Video not found")
     return video
+
+
+@app.get("/api/v1/videos/{video_id}/proxy", response_class=FileResponse)
+def get_proxy(video_id: str, session: Annotated[Session, Depends(get_session)]) -> FileResponse:
+    video = session.get(Video, video_id)
+    if video is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    path = Path(video.source_path).parent / "proxy.mp4"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Proxy not available")
+    return FileResponse(path, media_type="video/mp4", filename="proxy.mp4")
+
+
+@app.get("/api/v1/thumbnails/{thumbnail_id}", response_class=FileResponse)
+def get_thumbnail(
+    thumbnail_id: str, session: Annotated[Session, Depends(get_session)]
+) -> FileResponse:
+    thumbnail = session.get(Thumbnail, thumbnail_id)
+    if thumbnail is None or not Path(thumbnail.path).is_file():
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+    return FileResponse(thumbnail.path, media_type="image/jpeg")
 
 
 @app.post(
@@ -264,6 +296,169 @@ def get_timeline(
         )
         for detection, frame, membership in rows
     ]
+
+
+def _revision_response(revision: SelectionRevision) -> SelectionRevisionResponse:
+    return SelectionRevisionResponse(
+        id=revision.id,
+        video_id=revision.video_id,
+        person_id=revision.person_id,
+        parent_id=revision.parent_id,
+        ordinal=revision.ordinal,
+        settings=json.loads(revision.settings_json),
+        created_at=revision.created_at,
+    )
+
+
+def _next_revision(
+    session: Session, parent: SelectionRevision, settings_json: str | None = None
+) -> SelectionRevision:
+    ordinal = (
+        session.scalar(
+            select(func.max(SelectionRevision.ordinal)).where(
+                SelectionRevision.video_id == parent.video_id
+            )
+        )
+        or 0
+    ) + 1
+    revision = SelectionRevision(
+        video_id=parent.video_id,
+        person_id=parent.person_id,
+        parent_id=parent.id,
+        ordinal=ordinal,
+        settings_json=settings_json or parent.settings_json,
+        expert_acknowledged=parent.expert_acknowledged,
+    )
+    session.add(revision)
+    session.flush()
+    return revision
+
+
+@app.post(
+    "/api/v1/videos/{video_id}/selection-revisions",
+    response_model=SelectionRevisionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_selection(
+    video_id: str,
+    payload: SelectionCreate,
+    session: Annotated[Session, Depends(get_session)],
+) -> SelectionRevisionResponse:
+    person = session.get(GlobalPerson, payload.person_id)
+    if person is None or person.video_id != video_id:
+        raise HTTPException(status_code=404, detail="Person not found in video")
+    ordinal = (
+        session.scalar(
+            select(func.max(SelectionRevision.ordinal)).where(
+                SelectionRevision.video_id == video_id
+            )
+        )
+        or 0
+    ) + 1
+    revision = SelectionRevision(
+        video_id=video_id,
+        person_id=person.id,
+        ordinal=ordinal,
+        settings_json=payload.settings.model_dump_json(),
+        expert_acknowledged=payload.settings.expert_acknowledged,
+    )
+    session.add(revision)
+    session.commit()
+    session.refresh(revision)
+    return _revision_response(revision)
+
+
+@app.post(
+    "/api/v1/selection-revisions/{revision_id}/identity-overrides",
+    response_model=RevisionEditResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_identity_override(
+    revision_id: str,
+    payload: IdentityOverrideCreate,
+    session: Annotated[Session, Depends(get_session)],
+) -> RevisionEditResponse:
+    parent = session.get(SelectionRevision, revision_id)
+    tracklet = session.get(Tracklet, payload.tracklet_id)
+    if parent is None or tracklet is None or tracklet.video_id != parent.video_id:
+        raise HTTPException(status_code=404, detail="Revision or tracklet not found")
+    revision = _next_revision(session, parent)
+    override = IdentityOverride(
+        revision_id=revision.id,
+        tracklet_id=tracklet.id,
+        start_us=payload.start_us,
+        end_us=payload.end_us,
+        decision=payload.decision,
+    )
+    session.add(override)
+    session.commit()
+    session.refresh(revision)
+    return RevisionEditResponse(revision=_revision_response(revision), edit_id=override.id)
+
+
+@app.post(
+    "/api/v1/selection-revisions/{revision_id}/mask-prompts",
+    response_model=RevisionEditResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_mask_prompt(
+    revision_id: str,
+    payload: MaskPromptCreate,
+    session: Annotated[Session, Depends(get_session)],
+) -> RevisionEditResponse:
+    parent = session.get(SelectionRevision, revision_id)
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Revision not found")
+    revision = _next_revision(session, parent)
+    prompt = MaskPrompt(
+        revision_id=revision.id,
+        timestamp_us=payload.timestamp_us,
+        kind=payload.kind,
+        positive=payload.positive,
+        coordinates_json=json.dumps(payload.coordinates),
+    )
+    session.add(prompt)
+    session.commit()
+    session.refresh(revision)
+    return RevisionEditResponse(revision=_revision_response(revision), edit_id=prompt.id)
+
+
+@app.post(
+    "/api/v1/selection-revisions/{revision_id}/{job_kind}-jobs",
+    response_model=JobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_revision_job(
+    revision_id: str,
+    job_kind: Literal["preview", "render"],
+    session: Annotated[Session, Depends(get_session)],
+) -> Job:
+    revision = session.get(SelectionRevision, revision_id)
+    if revision is None:
+        raise HTTPException(status_code=404, detail="Revision not found")
+    job = Job(
+        video_id=revision.video_id,
+        kind=job_kind,
+        payload_json=json.dumps({"revision_id": revision.id}),
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return job
+
+
+@app.get("/api/v1/artifacts/{artifact_id}/download", response_class=FileResponse)
+def download_artifact(
+    artifact_id: str, session: Annotated[Session, Depends(get_session)]
+) -> FileResponse:
+    artifact = session.get(Artifact, artifact_id)
+    if artifact is None or not artifact.valid or not Path(artifact.path).is_file():
+        raise HTTPException(status_code=404, detail="Validated artifact not found")
+    return FileResponse(
+        artifact.path,
+        media_type="video/mp4",
+        filename="privacy-filtered.mp4" if artifact.kind == "render" else "preview.mp4",
+    )
 
 
 def run() -> None:

@@ -175,3 +175,64 @@ class Thumbnail(Base):
     timestamp_us: Mapped[int] = mapped_column(Integer)
     path: Mapped[str] = mapped_column(Text)
     quality_score: Mapped[float] = mapped_column(Float)
+
+
+class SelectionRevision(Base):
+    __tablename__ = "selection_revisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    video_id: Mapped[str] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[str] = mapped_column(
+        ForeignKey("global_people.id", ondelete="CASCADE"), index=True
+    )
+    parent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("selection_revisions.id", ondelete="SET NULL")
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    settings_json: Mapped[str] = mapped_column(Text, default="{}")
+    expert_acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (UniqueConstraint("video_id", "ordinal"),)
+
+
+class IdentityOverride(Base):
+    __tablename__ = "identity_overrides"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("selection_revisions.id", ondelete="CASCADE"), index=True
+    )
+    tracklet_id: Mapped[str] = mapped_column(ForeignKey("tracklets.id", ondelete="CASCADE"))
+    start_us: Mapped[int] = mapped_column(Integer)
+    end_us: Mapped[int] = mapped_column(Integer)
+    decision: Mapped[str] = mapped_column(String(16))
+
+
+class MaskPrompt(Base):
+    __tablename__ = "mask_prompts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("selection_revisions.id", ondelete="CASCADE"), index=True
+    )
+    timestamp_us: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))
+    positive: Mapped[bool] = mapped_column(Boolean, default=True)
+    coordinates_json: Mapped[str] = mapped_column(Text)
+
+
+class Artifact(Base):
+    __tablename__ = "artifacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    video_id: Mapped[str] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"), index=True)
+    revision_id: Mapped[str | None] = mapped_column(
+        ForeignKey("selection_revisions.id", ondelete="SET NULL"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(32))
+    path: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    valid: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

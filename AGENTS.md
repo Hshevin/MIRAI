@@ -21,7 +21,7 @@ React UI -> FastAPI API -> SQLite + project artifact store
                             render: SAM masks/safety/anonymize/encode/mux
 ```
 
-The local MVP uses a two-pass pipeline. Pass 1 caches media timestamps, detections, tracklets, embeddings, identity groups, thumbnails, and statistics. After selection and timeline corrections, Pass 2 generates conservative SAM masks in bounded shot chunks and composites the original subject over a mosaic-and-blurred frame.
+The local MVP uses a two-pass pipeline. Pass 1 caches media timestamps, detections, tracklets, embeddings, identity groups, thumbnails, and statistics. After selection and timeline corrections, Pass 2 composites approved person masks over a mosaic-and-blurred frame and publishes only validated media. The current renderer uses conservative cached YOLO polygons; SAM 2.1 temporal refinement remains the next vision milestone.
 
 ## Framework and model decisions
 
@@ -76,7 +76,7 @@ Commit automatically after a coherent milestone passes its relevant tests. Use d
 
 ## Current status
 
-Milestones 0 and 1 are complete: the repository foundation, exact-PTS media decoding, proxy generation, scene cuts, lazy detector/tracker/Re-ID adapters, persistent analysis records, conservative identity clustering, worker dispatch, and gallery/timeline APIs are implemented. Milestone 2 is next: revisioned selection and timeline corrections.
+Milestones 0–2 and the functional render slice are complete: revisioned selection, identity overrides, normalized point/box prompts, privacy settings, gallery/timeline UI, conservative compositing, PTS-aware H.264 rendering, audio mux, validation, and artifact download are implemented. SAM 2.1 temporal mask refinement and production GPU acceptance remain outstanding.
 
 ## Architecture decisions
 
@@ -84,3 +84,5 @@ Milestones 0 and 1 are complete: the repository foundation, exact-PTS media deco
 - 2026-08-18: Two-pass analysis/render workflow with conservative exclusion and timeline corrections.
 - 2026-08-18: Exact timestamp preservation via PyAV plus FFmpeg final mux.
 - 2026-08-18: Vision adapters are optional/lazy so API and identity-policy tests run on non-GPU machines.
+- 2026-08-18: Selection edits form an immutable parent chain; render jobs bind to a leaf revision.
+- 2026-08-18: Coarse instance polygons provide a privacy-safe functional fallback until SAM 2.1 refinement is integrated.
