@@ -21,4 +21,4 @@ models/
 *.avi
 web/node_modules/
 web/dist/
-
+web/*.tsbuildinfo
