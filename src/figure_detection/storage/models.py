@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from figure_detection.domain.enums import JobKind, JobStatus, VideoState
@@ -65,3 +65,113 @@ class Job(Base):
     )
 
     video: Mapped[Video] = relationship(back_populates="jobs")
+
+
+class Shot(Base):
+    __tablename__ = "shots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    video_id: Mapped[str] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"), index=True)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    start_pts: Mapped[int] = mapped_column(Integer)
+    end_pts: Mapped[int | None] = mapped_column(Integer)
+    time_base_num: Mapped[int] = mapped_column(Integer)
+    time_base_den: Mapped[int] = mapped_column(Integer)
+    cut_confidence: Mapped[float] = mapped_column(Float, default=1.0)
+
+    __table_args__ = (UniqueConstraint("video_id", "ordinal"),)
+
+
+class Frame(Base):
+    __tablename__ = "frames"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    video_id: Mapped[str] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"), index=True)
+    shot_id: Mapped[str] = mapped_column(ForeignKey("shots.id", ondelete="CASCADE"), index=True)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    pts: Mapped[int] = mapped_column(Integer)
+    duration: Mapped[int | None] = mapped_column(Integer)
+    time_base_num: Mapped[int] = mapped_column(Integer)
+    time_base_den: Mapped[int] = mapped_column(Integer)
+    timestamp_us: Mapped[int] = mapped_column(Integer, index=True)
+    is_keyframe: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    __table_args__ = (UniqueConstraint("video_id", "ordinal"),)
+
+
+class Tracklet(Base):
+    __tablename__ = "tracklets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    video_id: Mapped[str] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"), index=True)
+    shot_id: Mapped[str] = mapped_column(ForeignKey("shots.id", ondelete="CASCADE"), index=True)
+    tracker_id: Mapped[int] = mapped_column(Integer)
+    start_us: Mapped[int] = mapped_column(Integer)
+    end_us: Mapped[int] = mapped_column(Integer)
+    detected_frames: Mapped[int] = mapped_column(Integer, default=0)
+    mean_confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    embedding_json: Mapped[str | None] = mapped_column(Text)
+    embedding_variance: Mapped[float | None] = mapped_column(Float)
+    quality_score: Mapped[float] = mapped_column(Float, default=0.0)
+
+    __table_args__ = (UniqueConstraint("shot_id", "tracker_id"),)
+
+
+class Detection(Base):
+    __tablename__ = "detections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    frame_id: Mapped[int] = mapped_column(ForeignKey("frames.id", ondelete="CASCADE"), index=True)
+    tracklet_id: Mapped[str] = mapped_column(
+        ForeignKey("tracklets.id", ondelete="CASCADE"), index=True
+    )
+    x1: Mapped[float] = mapped_column(Float)
+    y1: Mapped[float] = mapped_column(Float)
+    x2: Mapped[float] = mapped_column(Float)
+    y2: Mapped[float] = mapped_column(Float)
+    confidence: Mapped[float] = mapped_column(Float)
+    mask_polygon_json: Mapped[str | None] = mapped_column(Text)
+
+
+class GlobalPerson(Base):
+    __tablename__ = "global_people"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    video_id: Mapped[str] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"), index=True)
+    display_label: Mapped[str] = mapped_column(String(16))
+    screen_time_us: Mapped[int] = mapped_column(Integer, default=0)
+    detected_frames: Mapped[int] = mapped_column(Integer, default=0)
+    appearance_count: Mapped[int] = mapped_column(Integer, default=0)
+    detector_confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    association_score: Mapped[float] = mapped_column(Float, default=0.0)
+
+    __table_args__ = (UniqueConstraint("video_id", "display_label"),)
+
+
+class PersonMembership(Base):
+    __tablename__ = "person_memberships"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    person_id: Mapped[str] = mapped_column(
+        ForeignKey("global_people.id", ondelete="CASCADE"), index=True
+    )
+    tracklet_id: Mapped[str] = mapped_column(
+        ForeignKey("tracklets.id", ondelete="CASCADE"), unique=True
+    )
+    status: Mapped[str] = mapped_column(String(32))
+    association_score: Mapped[float] = mapped_column(Float)
+    nearest_negative_margin: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(16), default="auto")
+
+
+class Thumbnail(Base):
+    __tablename__ = "thumbnails"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    person_id: Mapped[str] = mapped_column(
+        ForeignKey("global_people.id", ondelete="CASCADE"), index=True
+    )
+    tracklet_id: Mapped[str] = mapped_column(ForeignKey("tracklets.id", ondelete="CASCADE"))
+    timestamp_us: Mapped[int] = mapped_column(Integer)
+    path: Mapped[str] = mapped_column(Text)
+    quality_score: Mapped[float] = mapped_column(Float)

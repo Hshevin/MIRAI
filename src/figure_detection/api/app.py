@@ -6,17 +6,32 @@ from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from figure_detection.api.schemas import HealthResponse, JobResponse, VideoResponse
+from figure_detection.api.schemas import (
+    HealthResponse,
+    JobResponse,
+    PersonResponse,
+    ThumbnailResponse,
+    TimelineDetectionResponse,
+    VideoResponse,
+)
 from figure_detection.domain.enums import JobKind, JobStatus, VideoState
 from figure_detection.media.probe import MediaProbeError, probe_media
 from figure_detection.settings import get_settings
 from figure_detection.storage.database import create_schema, get_session
-from figure_detection.storage.models import Job, Video
+from figure_detection.storage.models import (
+    Detection,
+    Frame,
+    GlobalPerson,
+    Job,
+    PersonMembership,
+    Thumbnail,
+    Video,
+)
 
 
 def _binary_available(name: str) -> bool:
@@ -171,6 +186,84 @@ def cancel_job(job_id: str, session: Annotated[Session, Depends(get_session)]) -
         session.commit()
         session.refresh(job)
     return job
+
+
+@app.get("/api/v1/videos/{video_id}/people", response_model=list[PersonResponse])
+def list_people(
+    video_id: str, session: Annotated[Session, Depends(get_session)]
+) -> list[PersonResponse]:
+    if session.get(Video, video_id) is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    people = session.scalars(
+        select(GlobalPerson)
+        .where(GlobalPerson.video_id == video_id)
+        .order_by(GlobalPerson.display_label)
+    ).all()
+    output: list[PersonResponse] = []
+    for person in people:
+        ambiguous = session.scalar(
+            select(func.count(PersonMembership.id)).where(
+                PersonMembership.person_id == person.id,
+                PersonMembership.status == "ambiguous",
+            )
+        )
+        thumbnails = session.scalars(
+            select(Thumbnail)
+            .where(Thumbnail.person_id == person.id)
+            .order_by(Thumbnail.quality_score.desc())
+            .limit(5)
+        ).all()
+        output.append(
+            PersonResponse(
+                id=person.id,
+                display_label=person.display_label,
+                screen_time_us=person.screen_time_us,
+                detected_frames=person.detected_frames,
+                appearance_count=person.appearance_count,
+                detector_confidence=person.detector_confidence,
+                association_score=person.association_score,
+                ambiguous_appearances=int(ambiguous or 0),
+                thumbnails=[
+                    ThumbnailResponse(
+                        id=item.id,
+                        timestamp_us=item.timestamp_us,
+                        quality_score=item.quality_score,
+                    )
+                    for item in thumbnails
+                ],
+            )
+        )
+    return output
+
+
+@app.get("/api/v1/videos/{video_id}/timeline", response_model=list[TimelineDetectionResponse])
+def get_timeline(
+    video_id: str,
+    session: Annotated[Session, Depends(get_session)],
+    start_us: Annotated[int, Query(ge=0)] = 0,
+    end_us: Annotated[int | None, Query(gt=0)] = None,
+) -> list[TimelineDetectionResponse]:
+    query = (
+        select(Detection, Frame, PersonMembership)
+        .join(Frame, Detection.frame_id == Frame.id)
+        .outerjoin(PersonMembership, PersonMembership.tracklet_id == Detection.tracklet_id)
+        .where(Frame.video_id == video_id, Frame.timestamp_us >= start_us)
+        .order_by(Frame.timestamp_us, Detection.id)
+    )
+    if end_us is not None:
+        query = query.where(Frame.timestamp_us <= end_us)
+    rows = session.execute(query).all()
+    return [
+        TimelineDetectionResponse(
+            timestamp_us=frame.timestamp_us,
+            tracklet_id=detection.tracklet_id,
+            person_id=membership.person_id if membership else None,
+            membership_status=membership.status if membership else None,
+            box=(detection.x1, detection.y1, detection.x2, detection.y2),
+            confidence=detection.confidence,
+        )
+        for detection, frame, membership in rows
+    ]
 
 
 def run() -> None:

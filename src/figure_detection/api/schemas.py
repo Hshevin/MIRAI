@@ -40,3 +40,30 @@ class JobResponse(BaseModel):
     error_code: str | None
     error_detail: str | None
     created_at: datetime
+
+
+class ThumbnailResponse(BaseModel):
+    id: str
+    timestamp_us: int
+    quality_score: float
+
+
+class PersonResponse(BaseModel):
+    id: str
+    display_label: str
+    screen_time_us: int
+    detected_frames: int
+    appearance_count: int
+    detector_confidence: float
+    association_score: float
+    ambiguous_appearances: int
+    thumbnails: list[ThumbnailResponse]
+
+
+class TimelineDetectionResponse(BaseModel):
+    timestamp_us: int
+    tracklet_id: str
+    person_id: str | None
+    membership_status: str | None
+    box: tuple[float, float, float, float]
+    confidence: float

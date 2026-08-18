@@ -68,6 +68,7 @@ FFmpeg and FFprobe 6.1+ must be on `PATH`. GPU jobs require a CUDA-capable NVIDI
 - Selection and correction data is immutable and revisioned; jobs bind to one revision and settings snapshot.
 - Artifacts become downloadable only after validation and atomic publication.
 - Expert mask expansion must be explicitly acknowledged and recorded.
+- Vision packages import lazily. The base/dev environment must support API and algorithm tests without CUDA or model weights; GPU workers use `uv sync --extra vision`.
 
 ## Git policy
 
@@ -75,10 +76,11 @@ Commit automatically after a coherent milestone passes its relevant tests. Use d
 
 ## Current status
 
-Milestone 0 is complete: repository foundation, locked Python/frontend environments, media probing, persistence, upload/job API, durable-worker shell, tests, and frontend shell. Milestone 1 is next: person analysis and identity discovery.
+Milestones 0 and 1 are complete: the repository foundation, exact-PTS media decoding, proxy generation, scene cuts, lazy detector/tracker/Re-ID adapters, persistent analysis records, conservative identity clustering, worker dispatch, and gallery/timeline APIs are implemented. Milestone 2 is next: revisioned selection and timeline corrections.
 
 ## Architecture decisions
 
 - 2026-08-18: Local single-user deployment; SQLite-backed dedicated worker instead of Redis/Celery.
 - 2026-08-18: Two-pass analysis/render workflow with conservative exclusion and timeline corrections.
 - 2026-08-18: Exact timestamp preservation via PyAV plus FFmpeg final mux.
+- 2026-08-18: Vision adapters are optional/lazy so API and identity-policy tests run on non-GPU machines.
