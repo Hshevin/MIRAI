@@ -17,6 +17,7 @@ from figure_detection.vision.adapters import (
     BoxMotReIdEncoder,
     UltralyticsPersonDetector,
 )
+from figure_detection.vision.segmentation import Sam2MaskRefiner
 
 
 def lease_next_job(owner: str) -> str | None:
@@ -79,12 +80,19 @@ def process_job(job_id: str) -> None:
                 analyze_video(session, video, detector, tracker, reid, progress)
             elif job.kind in {JobKind.PREVIEW, JobKind.RENDER}:
                 revision_id = json.loads(job.payload_json)["revision_id"]
+                settings = get_settings()
+                mask_refiner = (
+                    Sam2MaskRefiner(settings.sam2_checkpoint, settings.sam2_config)
+                    if settings.sam2_checkpoint is not None
+                    else None
+                )
                 artifact = render_video(
                     session,
                     video,
                     revision_id,
                     preview_seconds=10 if job.kind == JobKind.PREVIEW else None,
                     progress=progress,
+                    mask_refiner=mask_refiner,
                 )
                 job.result_json = json.dumps({"artifact_id": artifact.id})
             else:

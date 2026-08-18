@@ -30,6 +30,17 @@ class ReIdEncoder(Protocol):
     ) -> list[Embedding]: ...
 
 
+class PrimaryMaskRefiner(Protocol):
+    def refine(
+        self,
+        image: NDArray[np.uint8],
+        box: tuple[float, float, float, float],
+        points: Sequence[tuple[float, float]],
+        labels: Sequence[int],
+        threshold: float,
+    ) -> NDArray[np.uint8] | None: ...
+
+
 class UltralyticsPersonDetector:
     def __init__(self, model_name: str = "yolo26l-seg.pt", image_size: int = 960) -> None:
         try:

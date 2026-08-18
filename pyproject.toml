@@ -19,6 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 vision = [
   "boxmot>=22.0",
+  "sam-2 @ git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4",
   "torch>=2.7",
   "torchvision>=0.22",
   "ultralytics>=8.4.63",
@@ -51,4 +52,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-

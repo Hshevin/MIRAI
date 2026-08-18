@@ -21,7 +21,7 @@ React UI -> FastAPI API -> SQLite + project artifact store
                             render: SAM masks/safety/anonymize/encode/mux
 ```
 
-The local MVP uses a two-pass pipeline. Pass 1 caches media timestamps, detections, tracklets, embeddings, identity groups, thumbnails, and statistics. After selection and timeline corrections, Pass 2 composites approved person masks over a mosaic-and-blurred frame and publishes only validated media. The current renderer uses conservative cached YOLO polygons; SAM 2.1 temporal refinement remains the next vision milestone.
+The local MVP uses a two-pass pipeline. Pass 1 caches media timestamps, detections, tracklets, embeddings, identity groups, thumbnails, and statistics. After selection and timeline corrections, Pass 2 refines approved instances with SAM 2.1 when configured, falls back conservatively to cached YOLO polygons, composites over a mosaic-and-blurred frame, and publishes only validated media. Cross-frame SAM memory and flow stabilization remain a quality milestone.
 
 ## Framework and model decisions
 
@@ -49,6 +49,7 @@ The local MVP uses a two-pass pipeline. Pass 1 caches media timestamps, detectio
 
 ```bash
 uv sync --extra dev
+SAM2_BUILD_CUDA=0 uv sync --extra dev --extra vision
 uv run figure-detection-api
 uv run figure-detection-worker
 uv run pytest
@@ -76,7 +77,7 @@ Commit automatically after a coherent milestone passes its relevant tests. Use d
 
 ## Current status
 
-Milestones 0–2 and the functional render slice are complete: revisioned selection, identity overrides, normalized point/box prompts, privacy settings, gallery/timeline UI, conservative compositing, PTS-aware H.264 rendering, audio mux, validation, and artifact download are implemented. SAM 2.1 temporal mask refinement and production GPU acceptance remain outstanding.
+Milestones 0–2 and the functional render slice are complete: revisioned selection, identity overrides, normalized point/box prompts, privacy settings, gallery/timeline UI, conservative compositing, optional SAM 2.1 detail refinement, PTS-aware H.264 rendering, audio mux, validation, and artifact download are implemented. SAM video-memory propagation, flow stabilization, and production GPU acceptance remain outstanding.
 
 ## Architecture decisions
 
@@ -86,3 +87,4 @@ Milestones 0–2 and the functional render slice are complete: revisioned select
 - 2026-08-18: Vision adapters are optional/lazy so API and identity-policy tests run on non-GPU machines.
 - 2026-08-18: Selection edits form an immutable parent chain; render jobs bind to a leaf revision.
 - 2026-08-18: Coarse instance polygons provide a privacy-safe functional fallback until SAM 2.1 refinement is integrated.
+- 2026-08-18: Official SAM 2 is commit-pinned in the `vision` extra; `FIGURE_DETECTION_SAM2_CHECKPOINT` enables refinement without making weights part of Git.

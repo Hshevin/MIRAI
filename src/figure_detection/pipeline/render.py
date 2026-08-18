@@ -20,6 +20,7 @@ from figure_detection.pipeline.compositor import (
 )
 from figure_detection.pipeline.revisions import resolve_selection
 from figure_detection.storage.models import Artifact, Detection, Frame, Video
+from figure_detection.vision.adapters import PrimaryMaskRefiner
 
 
 class RenderError(RuntimeError):
@@ -87,6 +88,7 @@ def render_video(
     *,
     preview_seconds: int | None = None,
     progress=None,
+    mask_refiner: PrimaryMaskRefiner | None = None,
 ) -> Artifact:
     selection = resolve_selection(session, revision_id)
     render_settings = RenderSettings.model_validate_json(selection.revision.settings_json)
@@ -128,6 +130,7 @@ def render_video(
                     output_stream.height = decoded.image.shape[0]
                     output_stream.pix_fmt = "yuv420p"
                     output_stream.options = {"crf": "18", "preset": "medium"}
+                primary_detections: list[Detection] = []
                 primary_polygons: list[list[tuple[float, float]]] = []
                 competing_polygons: list[list[tuple[float, float]]] = []
                 for detection, timestamp_us in detections_by_frame.get(decoded.ordinal, []):
@@ -137,10 +140,43 @@ def render_video(
                     if detection.tracklet_id in relevant_tracklets and selection.includes(
                         detection.tracklet_id, timestamp_us
                     ):
+                        primary_detections.append(detection)
                         primary_polygons.append(polygon)
                     else:
                         competing_polygons.append(polygon)
                 mask = polygon_mask(decoded.image.shape[:2], primary_polygons)
+                if mask_refiner is not None and primary_detections:
+                    refined = np.zeros_like(mask)
+                    nearby_prompts = [
+                        prompt
+                        for prompt in selection.prompts
+                        if abs(prompt.timestamp_us - decoded.timestamp_us) <= 75_000
+                    ]
+                    points = [
+                        (
+                            prompt.coordinates[0] * decoded.image.shape[1],
+                            prompt.coordinates[1] * decoded.image.shape[0],
+                        )
+                        for prompt in nearby_prompts
+                        if prompt.kind == "point"
+                    ]
+                    labels = [
+                        1 if prompt.positive else 0
+                        for prompt in nearby_prompts
+                        if prompt.kind == "point"
+                    ]
+                    for detection in primary_detections:
+                        candidate = mask_refiner.refine(
+                            decoded.image,
+                            (detection.x1, detection.y1, detection.x2, detection.y2),
+                            points,
+                            labels,
+                            render_settings.mask_threshold,
+                        )
+                        if candidate is not None:
+                            refined = cv2.bitwise_or(refined, candidate)
+                    if np.any(refined):
+                        mask = refined
                 if competing_polygons:
                     competing = polygon_mask(decoded.image.shape[:2], competing_polygons)
                     competing = cv2.dilate(competing, np.ones((5, 5), dtype=np.uint8))

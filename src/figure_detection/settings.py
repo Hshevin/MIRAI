@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 20 * 1024**3
     job_lease_seconds: int = 120
     worker_poll_seconds: float = 1.0
+    sam2_checkpoint: Path | None = None
+    sam2_config: str = "configs/sam2.1/sam2.1_hiera_b+.yaml"
 
     @property
     def database_url(self) -> str:
