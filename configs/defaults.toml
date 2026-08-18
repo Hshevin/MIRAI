@@ -1,0 +1,42 @@
+version = 1
+
+[media]
+max_width = 1920
+max_height = 1080
+max_duration_seconds = 1800
+minimum_free_disk_bytes = 10737418240
+
+[analysis]
+detector_model = "yolo26l-seg.pt"
+detector_image_size = 960
+detector_confidence = 0.10
+new_track_confidence = 0.25
+tracker = "botsort"
+reid_model = "osnet_x1_0_msmt17.pt"
+
+[identity]
+confirmed_similarity = 0.82
+ambiguous_similarity = 0.70
+nearest_negative_margin = 0.08
+
+[segmentation]
+model = "sam2.1_hiera_base_plus"
+chunk_frames = 300
+overlap_frames = 30
+anchor_interval_frames = 60
+safe_threshold = 0.70
+default_margin_pixels_1080p = -3
+
+[anonymization]
+mosaic_block_pixels_1080p = 32
+blur_sigma_ratio = 0.5
+inward_feather_pixels_1080p = 4
+
+[export]
+video_codec = "libx264"
+crf = 18
+preset = "medium"
+pixel_format = "yuv420p"
+fallback_audio_codec = "aac"
+fallback_audio_bitrate = "192k"
+

@@ -1,0 +1,20 @@
+:root {
+  color: #14211d;
+  background: #e9ede7;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+main { max-width: 1040px; margin: 0 auto; padding: 8vh 32px; }
+header { max-width: 760px; }
+.eyebrow { color: #b94422; font-size: 12px; font-weight: 800; letter-spacing: .14em; }
+h1 { font-family: Georgia, serif; font-size: clamp(44px, 7vw, 84px); line-height: .98; margin: 18px 0; }
+header p { font-size: 20px; line-height: 1.55; color: #53615c; }
+.upload-card { display: grid; grid-template-columns: 80px 1fr; gap: 24px; margin-top: 64px; padding: 36px; background: #f8faf7; border: 1px solid #cad2cc; box-shadow: 0 18px 45px #24352c18; }
+.step { font: 700 38px Georgia, serif; color: #b94422; }
+h2 { margin: 0 0 8px; font-size: 26px; }
+label { display: inline-block; margin-top: 20px; padding: 13px 18px; color: white; background: #173c31; font-weight: 700; cursor: pointer; }
+input { display: none; }
+aside { margin-top: 20px; color: #7a3d2c; font-size: 14px; }
+
