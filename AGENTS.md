@@ -48,6 +48,8 @@ The local MVP uses a two-pass pipeline. Pass 1 caches media timestamps, detectio
 ## Commands
 
 ```bash
+./scripts/launch.sh                    # Linux/macOS: launch all services
+.\scripts\launch.ps1                   # Windows PowerShell: launch all services
 uv sync --extra dev
 SAM2_BUILD_CUDA=0 uv sync --extra dev --extra vision
 uv run figure-detection-api

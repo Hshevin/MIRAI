@@ -6,7 +6,7 @@ See [AGENTS.md](AGENTS.md) for the architecture, privacy invariants, and agent d
 
 ## Prerequisites
 
-- Linux
+- Linux, macOS, or Windows (CUDA analysis requires a supported NVIDIA setup)
 - Python 3.12
 - [`uv`](https://docs.astral.sh/uv/)
 - Node.js 18 or newer and npm
@@ -81,6 +81,27 @@ uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_
 ```
 
 ## 3. Launch the application
+
+The launchers install dependencies, then run the API, worker, and frontend together. Stop all
+three services with `Ctrl+C`.
+
+### Linux or macOS
+
+```bash
+./scripts/launch.sh
+```
+
+### Windows PowerShell
+
+```powershell
+.\scripts\launch.ps1
+```
+
+If dependencies are already installed, use `--no-install` on Linux/macOS or `-NoInstall` on
+Windows. The application opens at <http://127.0.0.1:5173>. macOS can run the UI/API shell, but
+the CUDA analysis worker requires a supported Linux or Windows NVIDIA environment.
+
+### Manual launch
 
 The API, worker, and frontend are three separate processes. Run each command in its own terminal from the repository root.
 
