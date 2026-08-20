@@ -44,6 +44,11 @@ class JobResponse(BaseModel):
     created_at: datetime
 
 
+class QueueJobResponse(JobResponse):
+    video_name: str
+    artifact_id: str | None = None
+
+
 class ThumbnailResponse(BaseModel):
     id: str
     timestamp_us: int

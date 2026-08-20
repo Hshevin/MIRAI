@@ -14,6 +14,7 @@ type Video = {
   has_audio: boolean;
 };
 type Job = { id: string; kind: string; status: string; stage: string; progress: number; error_detail?: string; result_json?: string };
+type QueueJob = Job & { video_id: string; video_name: string; artifact_id?: string; created_at: string };
 type Thumbnail = { id: string; timestamp_us: number; quality_score: number };
 type Person = {
   id: string;
@@ -72,6 +73,8 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [artifactId, setArtifactId] = useState<string | null>(null);
+  const [queue, setQueue] = useState<QueueJob[]>([]);
+  const [queueError, setQueueError] = useState("");
   const player = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -86,6 +89,36 @@ function App() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [job, video]);
+
+  useEffect(() => {
+    let active = true;
+    async function refreshQueue() {
+      try {
+        const next = await json<QueueJob[]>(`${API}/jobs`);
+        if (active) {
+          setQueue(next);
+          setQueueError("");
+        }
+      } catch (error) {
+        if (active) setQueueError(String(error));
+      }
+    }
+    refreshQueue();
+    const timer = window.setInterval(refreshQueue, 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  async function cancelJob(jobId: string) {
+    try {
+      await json<Job>(`${API}/jobs/${jobId}/cancel`, { method: "POST" });
+      setQueue((items) => items.map((item) => item.id === jobId ? { ...item, status: "cancelled", stage: "cancelled" } : item));
+    } catch (error) {
+      setQueueError(String(error));
+    }
+  }
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -200,6 +233,34 @@ function App() {
         <h1>Keep one person. Hide everything else.</h1>
         <p>Discover every appearance, review uncertain identity matches, then export only the approved subject.</p>
       </header>
+
+      <section className="queue-panel" aria-labelledby="queue-title">
+        <div className="queue-heading">
+          <div><span className="eyebrow">LIVE STATUS</span><h2 id="queue-title">Processing queue</h2></div>
+          <span>{queue.filter((item) => ["queued", "running"].includes(item.status)).length} active</span>
+        </div>
+        {queueError && <p className="error" role="alert">Queue unavailable: {queueError}</p>}
+        {!queueError && queue.length === 0 && <p>No processing jobs yet.</p>}
+        <div className="queue-list">
+          {queue.map((item) => (
+            <article className={`queue-item status-${item.status}`} key={item.id}>
+              <div className="queue-summary">
+                <div><strong>{item.video_name}</strong><span>{item.kind}</span></div>
+                <span className="status-badge">{item.status}</span>
+              </div>
+              <div className="queue-progress" aria-label={`${item.stage}, ${Math.round(item.progress * 100)} percent`}>
+                <div style={{ width: `${item.progress * 100}%` }} />
+              </div>
+              <div className="queue-meta"><span>{item.stage}</span><span>{Math.round(item.progress * 100)}%</span></div>
+              {item.error_detail && <p className="queue-error">{item.error_detail}</p>}
+              <div className="queue-actions">
+                {["queued", "running"].includes(item.status) && <button className="queue-cancel" onClick={() => cancelJob(item.id)}>Cancel</button>}
+                {item.artifact_id && <a className="queue-download" href={`${API}/artifacts/${item.artifact_id}/download`}>Download</a>}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       {!video && (
         <form className="panel upload" onSubmit={upload}>

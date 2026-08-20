@@ -18,6 +18,7 @@ from figure_detection.api.schemas import (
     JobResponse,
     MaskPromptCreate,
     PersonResponse,
+    QueueJobResponse,
     RevisionEditResponse,
     SelectionCreate,
     SelectionRevisionResponse,
@@ -203,6 +204,40 @@ def get_job(job_id: str, session: Annotated[Session, Depends(get_session)]) -> J
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+@app.get("/api/v1/jobs", response_model=list[QueueJobResponse])
+def list_jobs(
+    session: Annotated[Session, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[QueueJobResponse]:
+    rows = session.execute(
+        select(Job, Video)
+        .join(Video, Job.video_id == Video.id)
+        .order_by(Job.created_at.desc())
+        .limit(limit)
+    ).all()
+    output = []
+    for job, video in rows:
+        result = json.loads(job.result_json) if job.result_json else {}
+        output.append(
+            QueueJobResponse(
+                id=job.id,
+                video_id=job.video_id,
+                video_name=video.original_name,
+                kind=job.kind,
+                status=job.status,
+                stage=job.stage,
+                progress=job.progress,
+                cancel_requested=job.cancel_requested,
+                error_code=job.error_code,
+                error_detail=job.error_detail,
+                result_json=job.result_json,
+                artifact_id=result.get("artifact_id"),
+                created_at=job.created_at,
+            )
+        )
+    return output
 
 
 @app.post("/api/v1/jobs/{job_id}/cancel", response_model=JobResponse)

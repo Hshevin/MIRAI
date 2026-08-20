@@ -93,3 +93,4 @@ Milestones 0–2 and the functional render slice are complete: revisioned select
 - 2026-08-18: Official SAM 2 is commit-pinned in the `vision` extra; `FIGURE_DETECTION_SAM2_CHECKPOINT` enables refinement without making weights part of Git.
 - 2026-08-20: The worker records bounded JSONL diagnostics and full job tracebacks under `var/logs` so dependency, CUDA, and model initialization failures remain inspectable after a job ends.
 - 2026-08-20: Expired running-job leases are reclaimable, and uncaught per-job failures are logged and finalized without terminating the worker loop.
+- 2026-08-20: The API exposes a persistent recent-job queue joined with video names and published artifacts; the UI polls it independently of the open editor and provides progress, errors, cancellation, and downloads.

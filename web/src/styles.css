@@ -7,6 +7,26 @@ header { max-width: 820px; }
 .eyebrow { color: #b94422; font-size: 12px; font-weight: 800; letter-spacing: .14em; }
 h1 { font: 700 clamp(44px, 7vw, 82px)/.98 Georgia, serif; margin: 18px 0; }
 header p { font-size: 20px; line-height: 1.55; color: #53615c; }
+.queue-panel { margin-top: 36px; padding: 24px; color: #eaf2ed; background: #132d25; box-shadow: 0 18px 45px #24352c25; }
+.queue-heading, .queue-summary, .queue-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.queue-heading h2 { margin-top: 4px; }
+.queue-heading > span { padding: 6px 10px; color: #173c31; background: #b8d2c6; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.queue-list { display: grid; gap: 10px; max-height: 430px; margin-top: 18px; overflow-y: auto; }
+.queue-item { padding: 15px; color: #14211d; background: #f8faf7; border-left: 5px solid #8a9690; }
+.queue-item.status-running { border-left-color: #d4812f; }
+.queue-item.status-succeeded { border-left-color: #287055; }
+.queue-item.status-failed { border-left-color: #b94422; }
+.queue-summary div strong, .queue-summary div span { display: block; }
+.queue-summary div span { margin-top: 2px; color: #65716d; font-size: 12px; text-transform: uppercase; }
+.status-badge { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.queue-progress { height: 8px; margin-top: 12px; overflow: hidden; background: #dce3de; }
+.queue-progress div { height: 100%; background: #5e9a82; transition: width .3s; }
+.queue-meta { margin-top: 6px; color: #65716d; font-size: 12px; }
+.queue-error { margin: 10px 0 0; color: #a02f1b; font-size: 13px; }
+.queue-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.queue-cancel, .queue-download { margin: 10px 0 0; padding: 7px 10px; font-size: 12px; font-weight: 750; }
+.queue-cancel { color: white; background: #7a3d2c; }
+.queue-download { color: #173c31; border: 1px solid #173c31; text-decoration: none; }
 .panel, .editor { margin-top: 52px; padding: 34px; background: #f8faf7; border: 1px solid #cad2cc; box-shadow: 0 18px 45px #24352c18; }
 .upload, .section-head { display: grid; grid-template-columns: 72px 1fr; gap: 20px; }
 .step { font: 700 36px Georgia, serif; color: #b94422; }
