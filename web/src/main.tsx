@@ -109,7 +109,13 @@ function App() {
 
   async function analyze() {
     if (!video) return;
-    setJob(await json<Job>(`${API}/videos/${video.id}/analysis-jobs`, { method: "POST" }));
+    setMessage("");
+    setPeople([]);
+    try {
+      setJob(await json<Job>(`${API}/videos/${video.id}/analysis-jobs`, { method: "POST" }));
+    } catch (error) {
+      setMessage(String(error));
+    }
   }
 
   async function selectPerson(person: Person) {
@@ -210,7 +216,12 @@ function App() {
           <div className="section-head"><span className="step">02</span><div><h2>{video.original_name}</h2><p>{video.width}×{video.height} · {formatTime(video.duration_us)} · {video.has_audio ? "audio retained" : "no audio"}</p></div></div>
           {!job && <button onClick={analyze}>Analyze people</button>}
           {job && <div className="progress"><div style={{ width: `${job.progress * 100}%` }} /><span>{job.stage} · {Math.round(job.progress * 100)}%</span></div>}
-          {job?.status === "failed" && <p className="error">{job.error_detail}</p>}
+          {job?.status === "failed" && (
+            <div className="job-failure" role="alert">
+              <p className="error">{job.error_detail}</p>
+              <button onClick={analyze}>Retry analysis</button>
+            </div>
+          )}
           <div className="people">
             {people.map((person) => (
               <button className="person" key={person.id} onClick={() => selectPerson(person)}>
