@@ -13,6 +13,12 @@ header p { font-size: 20px; line-height: 1.55; color: #53615c; }
 h2 { margin: 0 0 8px; font-size: 27px; }
 p { color: #53615c; }
 button, .button { display: inline-block; border: 0; margin: 14px 10px 0 0; padding: 12px 17px; color: white; background: #173c31; font-weight: 750; cursor: pointer; }
+.upload-actions { display: flex; flex-wrap: wrap; align-items: center; }
+.file-selection { display: flex; align-items: center; gap: 12px; width: min(100%, 600px); min-height: 58px; margin-top: 14px; padding: 12px 14px; color: #65716d; background: #eef1ed; border: 1px dashed #aeb9b1; }
+.file-selection.selected { color: #173c31; background: #e4eee8; border: 1px solid #9cbcaf; }
+.file-selection strong, .file-selection small { display: block; overflow-wrap: anywhere; }
+.file-selection small { margin-top: 3px; color: #65716d; }
+.file-check { display: grid; flex: 0 0 30px; height: 30px; place-items: center; color: white; background: #287055; border-radius: 50%; font-weight: 800; }
 .download { display: inline-block; margin-top: 14px; padding: 12px 17px; color: #173c31; border: 2px solid #173c31; font-weight: 750; text-decoration: none; }
 button:disabled { opacity: .5; cursor: wait; }
 input { display: none; }

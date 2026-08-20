@@ -1,4 +1,4 @@
-import React, { FormEvent, MouseEvent, useEffect, useRef, useState } from "react";
+import React, { ChangeEvent, FormEvent, MouseEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -50,6 +50,17 @@ function formatTime(microseconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+function formatFileSize(bytes: number) {
+  const units = ["B", "KB", "MB", "GB"];
+  let size = bytes;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
 function App() {
   const [video, setVideo] = useState<Video | null>(null);
   const [job, setJob] = useState<Job | null>(null);
@@ -59,6 +70,7 @@ function App() {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const player = useRef<HTMLVideoElement>(null);
 
@@ -87,6 +99,12 @@ function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function chooseVideo(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setSelectedFile(file);
+    setMessage("");
   }
 
   async function analyze() {
@@ -166,8 +184,23 @@ function App() {
           <div>
             <h2>Upload a video</h2>
             <p>Initial target: 1080p, up to 30 minutes.</p>
-            <label className="button">Choose video<input name="upload" type="file" accept="video/*" required /></label>
-            <button disabled={busy}>{busy ? "Inspecting…" : "Upload"}</button>
+            <div className="upload-actions">
+              <label className="button">
+                {selectedFile ? "Choose another video" : "Choose video"}
+                <input name="upload" type="file" accept="video/*" required onChange={chooseVideo} />
+              </label>
+              <button disabled={busy || !selectedFile}>{busy ? "Uploading and inspecting…" : "Upload video"}</button>
+            </div>
+            <div className={`file-selection ${selectedFile ? "selected" : ""}`} aria-live="polite">
+              {selectedFile ? (
+                <>
+                  <span className="file-check" aria-hidden="true">✓</span>
+                  <span><strong>{selectedFile.name}</strong><small>{formatFileSize(selectedFile.size)} · ready to upload</small></span>
+                </>
+              ) : (
+                <span>No video selected</span>
+              )}
+            </div>
           </div>
         </form>
       )}
