@@ -120,6 +120,20 @@ function App() {
     }
   }
 
+  function startAnotherVideo() {
+    setVideo(null);
+    setJob(null);
+    setPeople([]);
+    setSelected(null);
+    setRevision(null);
+    setTimeline([]);
+    setMessage("");
+    setSelectedFile(null);
+    setArtifactId(null);
+    setBusy(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -232,6 +246,7 @@ function App() {
         <span className="eyebrow">PRIMARY SUBJECT PRIVACY</span>
         <h1>Keep one person. Hide everything else.</h1>
         <p>Discover every appearance, review uncertain identity matches, then export only the approved subject.</p>
+        {video && <button className="new-video" onClick={startAnotherVideo}>Upload another video</button>}
       </header>
 
       <section className="queue-panel" aria-labelledby="queue-title">
