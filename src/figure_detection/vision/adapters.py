@@ -152,6 +152,6 @@ class BoxMotReIdEncoder:
     ) -> list[Embedding]:
         if not boxes:
             return []
-        values = np.asarray(self.model.embed(image, boxes=np.asarray(boxes)), dtype=np.float32)
+        values = np.asarray(self.model(image, boxes=np.asarray(boxes)), dtype=np.float32)
         norms = np.linalg.norm(values, axis=1, keepdims=True).clip(min=1e-12)
         return [row for row in values / norms]
