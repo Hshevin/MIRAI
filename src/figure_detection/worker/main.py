@@ -5,7 +5,7 @@ import socket
 import time
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from figure_detection.domain.enums import JobKind, JobStatus, VideoState
 from figure_detection.logging import configure_logging, runtime_diagnostics
@@ -25,6 +25,10 @@ from figure_detection.vision.segmentation import Sam2MaskRefiner
 logger = logging.getLogger(__name__)
 
 
+def _enum_value(value: object) -> str:
+    return str(getattr(value, "value", value))
+
+
 def lease_next_job(owner: str) -> str | None:
     settings = get_settings()
     now = datetime.now(UTC)
@@ -32,8 +36,14 @@ def lease_next_job(owner: str) -> str | None:
         job = session.scalar(
             select(Job)
             .where(
-                Job.status == JobStatus.QUEUED,
-                or_(Job.lease_expires_at.is_(None), Job.lease_expires_at < now),
+                or_(
+                    Job.status == JobStatus.QUEUED,
+                    and_(
+                        Job.status == JobStatus.RUNNING,
+                        Job.lease_expires_at.is_not(None),
+                        Job.lease_expires_at < now,
+                    ),
+                )
             )
             .order_by(Job.created_at)
             .limit(1)
@@ -69,7 +79,7 @@ def process_job(job_id: str) -> None:
             "component": "worker",
             "job_id": job.id,
             "video_id": job.video_id,
-            "job_kind": job.kind.value,
+            "job_kind": _enum_value(job.kind),
         }
         logger.info("job started", extra=context)
 
@@ -165,6 +175,24 @@ def run() -> None:
     owner = f"{socket.gethostname()}:{os.getpid()}"
     while True:
         if job_id := lease_next_job(owner):
-            process_job(job_id)
+            try:
+                process_job(job_id)
+            except Exception:
+                logger.exception(
+                    "unhandled worker loop failure",
+                    extra={"component": "worker", "job_id": job_id},
+                )
+                with SessionLocal.begin() as session:
+                    job = session.get(Job, job_id)
+                    if job is not None:
+                        job.status = JobStatus.FAILED
+                        job.stage = "failed"
+                        job.error_code = "WORKER_INTERNAL_ERROR"
+                        job.error_detail = (
+                            "The worker encountered an internal error. See "
+                            f"{log_path.resolve()} for the full traceback."
+                        )
+                        job.lease_owner = None
+                        job.lease_expires_at = None
         else:
             time.sleep(settings.worker_poll_seconds)

@@ -18,8 +18,7 @@ def require_cuda() -> None:
         import torch
     except ImportError as exc:
         raise VisionDependencyError(
-            "PyTorch is unavailable. Install the vision environment with "
-            "`uv sync --extra vision`."
+            "PyTorch is unavailable. Install the vision environment with `uv sync --extra vision`."
         ) from exc
     if not torch.cuda.is_available():
         raise VisionDependencyError(

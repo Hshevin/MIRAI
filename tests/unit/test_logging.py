@@ -2,6 +2,7 @@ import json
 import logging
 
 from figure_detection.logging import JsonFormatter, configure_logging
+from figure_detection.worker.main import _enum_value
 
 
 def test_json_formatter_includes_context_and_exception():
@@ -35,3 +36,11 @@ def test_configure_logging_writes_jsonl(tmp_path):
     events = [json.loads(line) for line in log_path.read_text().splitlines()]
     assert events[-1]["message"] == "trace me"
     assert events[-1]["job_id"] == "job-2"
+
+
+def test_enum_value_accepts_database_string_and_enum():
+    class Example:
+        value = "analysis"
+
+    assert _enum_value("analysis") == "analysis"
+    assert _enum_value(Example()) == "analysis"

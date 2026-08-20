@@ -92,3 +92,4 @@ Milestones 0–2 and the functional render slice are complete: revisioned select
 - 2026-08-18: Coarse instance polygons provide a privacy-safe functional fallback until SAM 2.1 refinement is integrated.
 - 2026-08-18: Official SAM 2 is commit-pinned in the `vision` extra; `FIGURE_DETECTION_SAM2_CHECKPOINT` enables refinement without making weights part of Git.
 - 2026-08-20: The worker records bounded JSONL diagnostics and full job tracebacks under `var/logs` so dependency, CUDA, and model initialization failures remain inspectable after a job ends.
+- 2026-08-20: Expired running-job leases are reclaimable, and uncaught per-job failures are logged and finalized without terminating the worker loop.
