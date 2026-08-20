@@ -16,6 +16,7 @@ from figure_detection.vision.adapters import (
     BoxMotPersonTracker,
     BoxMotReIdEncoder,
     UltralyticsPersonDetector,
+    require_cuda,
 )
 from figure_detection.vision.segmentation import Sam2MaskRefiner
 
@@ -74,6 +75,7 @@ def process_job(job_id: str) -> None:
 
         try:
             if job.kind == JobKind.ANALYSIS:
+                require_cuda()
                 detector = UltralyticsPersonDetector()
                 tracker = BoxMotPersonTracker()
                 reid = BoxMotReIdEncoder()

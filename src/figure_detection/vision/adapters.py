@@ -12,6 +12,34 @@ class VisionDependencyError(RuntimeError):
     pass
 
 
+def require_cuda() -> None:
+    """Fail before model setup with an actionable GPU runtime error."""
+    try:
+        import torch
+    except ImportError as exc:
+        raise VisionDependencyError(
+            "PyTorch is unavailable. Install the vision environment with "
+            "`uv sync --extra vision`."
+        ) from exc
+    if not torch.cuda.is_available():
+        raise VisionDependencyError(
+            "CUDA is unavailable. People analysis requires a CUDA-capable NVIDIA GPU and a "
+            "working NVIDIA driver. Verify that `nvidia-smi` succeeds, then restart the worker."
+        )
+
+
+def _dependency_error(package: str, exc: ImportError) -> VisionDependencyError:
+    missing = getattr(exc, "name", None)
+    if missing == package or (missing and missing.startswith(f"{package}.")):
+        detail = f"missing module `{missing}`"
+    else:
+        detail = str(exc)
+    return VisionDependencyError(
+        f"{package} could not be imported ({detail}). Re-run `uv sync --extra vision`; "
+        "if it is already installed, the installed package may be incompatible."
+    )
+
+
 class PersonDetector(Protocol):
     def detect(self, image: NDArray[np.uint8]) -> list[PersonDetection]: ...
 
@@ -46,9 +74,7 @@ class UltralyticsPersonDetector:
         try:
             from ultralytics import YOLO
         except ImportError as exc:
-            raise VisionDependencyError(
-                "Install the vision environment with `uv sync --extra vision`"
-            ) from exc
+            raise _dependency_error("ultralytics", exc) from exc
         self.model = YOLO(model_name)
         self.image_size = image_size
 
@@ -72,11 +98,10 @@ class UltralyticsPersonDetector:
 class BoxMotPersonTracker:
     def __init__(self, reid_weights: str = "osnet_x1_0_msmt17.pt") -> None:
         try:
-            from boxmot import create_tracker
+            from boxmot.trackers.registry import create_tracker
         except ImportError as exc:
-            raise VisionDependencyError(
-                "Install the vision environment with `uv sync --extra vision`"
-            ) from exc
+            raise _dependency_error("boxmot", exc) from exc
+        require_cuda()
         self._create_tracker = create_tracker
         self.reid_weights = Path(reid_weights)
         self._tracker = self._new_tracker()
@@ -117,12 +142,11 @@ def _nearest_detection(box: Sequence[float], detections: Sequence[PersonDetectio
 class BoxMotReIdEncoder:
     def __init__(self, weights: str = "osnet_x1_0_msmt17.pt") -> None:
         try:
-            from boxmot import ReIDModel
+            from boxmot.reid.core import ReID
         except ImportError as exc:
-            raise VisionDependencyError(
-                "Install the vision environment with `uv sync --extra vision`"
-            ) from exc
-        self.model = ReIDModel(weights, device="cuda:0", half=True)
+            raise _dependency_error("boxmot", exc) from exc
+        require_cuda()
+        self.model = ReID(weights=weights, device="cuda:0", half=True)
 
     def embed(
         self, image: NDArray[np.uint8], boxes: Sequence[tuple[float, float, float, float]]
