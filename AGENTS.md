@@ -44,6 +44,7 @@ The local MVP uses a two-pass pipeline. Pass 1 caches media timestamps, detectio
 - `configs`: versioned model/tracker/privacy/export defaults.
 - `tests`: unit, integration, CV-quality, and end-to-end tests.
 - `var`: runtime database, uploads, proxies, caches, previews, and outputs; never commit.
+- `var/logs`: bounded structured process logs and rotated backups; never commit.
 
 ## Commands
 
@@ -90,3 +91,4 @@ Milestones 0–2 and the functional render slice are complete: revisioned select
 - 2026-08-18: Selection edits form an immutable parent chain; render jobs bind to a leaf revision.
 - 2026-08-18: Coarse instance polygons provide a privacy-safe functional fallback until SAM 2.1 refinement is integrated.
 - 2026-08-18: Official SAM 2 is commit-pinned in the `vision` extra; `FIGURE_DETECTION_SAM2_CHECKPOINT` enables refinement without making weights part of Git.
+- 2026-08-20: The worker records bounded JSONL diagnostics and full job tracebacks under `var/logs` so dependency, CUDA, and model initialization failures remain inspectable after a job ends.

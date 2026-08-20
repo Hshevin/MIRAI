@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import socket
 import time
@@ -7,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import or_, select
 
 from figure_detection.domain.enums import JobKind, JobStatus, VideoState
+from figure_detection.logging import configure_logging, runtime_diagnostics
 from figure_detection.pipeline.analysis import analyze_video
 from figure_detection.pipeline.render import render_video
 from figure_detection.settings import get_settings
@@ -19,6 +21,8 @@ from figure_detection.vision.adapters import (
     require_cuda,
 )
 from figure_detection.vision.segmentation import Sam2MaskRefiner
+
+logger = logging.getLogger(__name__)
 
 
 def lease_next_job(owner: str) -> str | None:
@@ -61,6 +65,14 @@ def process_job(job_id: str) -> None:
             session.commit()
             return
 
+        context = {
+            "component": "worker",
+            "job_id": job.id,
+            "video_id": job.video_id,
+            "job_kind": job.kind.value,
+        }
+        logger.info("job started", extra=context)
+
         def progress(stage: str, value: float) -> None:
             session.refresh(job)
             if job.cancel_requested:
@@ -75,9 +87,13 @@ def process_job(job_id: str) -> None:
 
         try:
             if job.kind == JobKind.ANALYSIS:
+                logger.info("checking CUDA runtime", extra={**context, "stage": "cuda_check"})
                 require_cuda()
+                logger.info("initializing person detector", extra={**context, "stage": "detector"})
                 detector = UltralyticsPersonDetector()
+                logger.info("initializing person tracker", extra={**context, "stage": "tracker"})
                 tracker = BoxMotPersonTracker()
+                logger.info("initializing Re-ID encoder", extra={**context, "stage": "reid"})
                 reid = BoxMotReIdEncoder()
                 analyze_video(session, video, detector, tracker, reid, progress)
             elif job.kind in {JobKind.PREVIEW, JobKind.RENDER}:
@@ -102,12 +118,14 @@ def process_job(job_id: str) -> None:
             job.status = JobStatus.SUCCEEDED
             job.stage = "complete"
             job.progress = 1.0
+            logger.info("job succeeded", extra=context)
         except InterruptedError:
             session.rollback()
             job = session.get(Job, job_id)
             job.status = JobStatus.CANCELLED
             job.stage = "cancelled"
         except Exception as exc:
+            logger.exception("job failed", extra=context)
             session.rollback()
             job = session.get(Job, job_id)
             video = session.get(Video, job.video_id)
@@ -128,6 +146,21 @@ def process_job(job_id: str) -> None:
 def run() -> None:
     settings = get_settings()
     settings.ensure_directories()
+    log_path = configure_logging("worker", settings.runtime_dir)
+    logger.info(
+        "worker starting",
+        extra={"component": "worker"},
+    )
+    logger.info(
+        "worker runtime diagnostics: %s",
+        json.dumps(runtime_diagnostics(), sort_keys=True),
+        extra={"component": "worker"},
+    )
+    logger.info(
+        "worker log path: %s",
+        log_path.resolve(),
+        extra={"component": "worker"},
+    )
     create_schema()
     owner = f"{socket.gethostname()}:{os.getpid()}"
     while True:

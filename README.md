@@ -128,6 +128,14 @@ uv run figure-detection-worker
 
 The worker handles analysis, previews, and final rendering. Keep it running while using the application. GPU work is intentionally limited to one job at a time.
 
+The worker writes structured diagnostics and full exception tracebacks to
+`var/logs/worker.jsonl` (with bounded rotated backups). When troubleshooting a failed job,
+restart the worker first and inspect the latest entries with:
+
+```bash
+tail -n 50 var/logs/worker.jsonl
+```
+
 ### Terminal 3: frontend
 
 ```bash
