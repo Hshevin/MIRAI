@@ -436,6 +436,16 @@ def create_revision_job(
     revision = session.get(SelectionRevision, revision_id)
     if revision is None:
         raise HTTPException(status_code=404, detail="Revision not found")
+    active_jobs = session.scalars(
+        select(Job).where(
+            Job.video_id == revision.video_id,
+            Job.kind == job_kind,
+            Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+        )
+    )
+    for active_job in active_jobs:
+        if json.loads(active_job.payload_json).get("revision_id") == revision.id:
+            return active_job
     job = Job(
         video_id=revision.video_id,
         kind=job_kind,

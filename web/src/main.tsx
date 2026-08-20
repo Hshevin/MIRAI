@@ -13,7 +13,7 @@ type Video = {
   duration_us: number;
   has_audio: boolean;
 };
-type Job = { id: string; status: string; stage: string; progress: number; error_detail?: string; result_json?: string };
+type Job = { id: string; kind: string; status: string; stage: string; progress: number; error_detail?: string; result_json?: string };
 type Thumbnail = { id: string; timestamp_us: number; quality_score: number };
 type Person = {
   id: string;
@@ -174,7 +174,24 @@ function App() {
     setMessage(`${decision} range saved in revision ${response.revision.ordinal}`);
   }
 
+  async function startRevisionJob(kind: "preview" | "render") {
+    if (!revision) return;
+    setMessage("");
+    setArtifactId(null);
+    try {
+      const next = await json<Job>(
+        `${API}/selection-revisions/${revision.id}/${kind}-jobs`,
+        { method: "POST" },
+      );
+      setJob(next);
+      setMessage(`${kind === "preview" ? "Preview" : "Video processing"} queued.`);
+    } catch (error) {
+      setMessage(String(error));
+    }
+  }
+
   const tracks = Array.from(new Set(timeline.map((item) => item.tracklet_id)));
+  const revisionJobActive = Boolean(job && ["queued", "running"].includes(job.status));
 
   return (
     <main>
@@ -242,8 +259,21 @@ function App() {
           <div className="track-list">
             {tracks.map((track) => <div className="track" key={track}><code>{track.slice(0, 8)}</code><span>{timeline.filter((item) => item.tracklet_id === track).length} detections</span><button onClick={() => override(track, "include")}>Include ±5s</button><button className="secondary" onClick={() => override(track, "exclude")}>Exclude ±5s</button></div>)}
           </div>
-          <button onClick={async () => setJob(await json<Job>(`${API}/selection-revisions/${revision.id}/preview-jobs`, { method: "POST" }))}>Generate preview</button>
-          <button onClick={async () => setJob(await json<Job>(`${API}/selection-revisions/${revision.id}/render-jobs`, { method: "POST" }))}>Process video</button>
+          <div className="render-actions">
+            <button disabled={revisionJobActive} onClick={() => startRevisionJob("preview")}>
+              {revisionJobActive && job?.kind === "preview" ? "Generating preview…" : "Generate preview"}
+            </button>
+            <button disabled={revisionJobActive} onClick={() => startRevisionJob("render")}>
+              {revisionJobActive && job?.kind === "render" ? "Processing video…" : "Process video"}
+            </button>
+          </div>
+          {job && ["preview", "render"].includes(job.kind) && (
+            <div className="job-status" aria-live="polite">
+              <div className="progress"><div style={{ width: `${job.progress * 100}%` }} /><span>{job.stage} · {Math.round(job.progress * 100)}%</span></div>
+              {job.status === "failed" && <p className="error" role="alert">{job.error_detail ?? "Processing failed."}</p>}
+              {job.status === "succeeded" && <p className="notice">{job.kind === "preview" ? "Preview" : "Video"} completed successfully.</p>}
+            </div>
+          )}
           {artifactId && <a className="download" href={`${API}/artifacts/${artifactId}/download`}>Download validated video</a>}
         </section>
       )}
