@@ -7,7 +7,13 @@ header { max-width: 820px; }
 .eyebrow { color: #b94422; font-size: 12px; font-weight: 800; letter-spacing: .14em; }
 h1 { font: 700 clamp(44px, 7vw, 82px)/.98 Georgia, serif; margin: 18px 0; }
 header p { font-size: 20px; line-height: 1.55; color: #53615c; }
+nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; padding-bottom: 12px; border-bottom: 1px solid #b9c4bd; }
+nav button { margin: 0; color: #53615c; background: transparent; border: 1px solid transparent; }
+nav button:hover, nav button.active { color: white; background: #173c31; }
+nav button:disabled { color: #8d9792; background: transparent; cursor: not-allowed; }
+nav button span { display: inline-grid; min-width: 22px; height: 22px; margin-left: 6px; padding: 0 5px; place-items: center; color: #173c31; background: #b8d2c6; border-radius: 11px; font-size: 11px; }
 .new-video { margin-top: 4px; color: #173c31; background: transparent; border: 2px solid #173c31; }
+.current-video-note { max-width: 650px; padding: 10px 12px; background: #eef1ed; border-left: 3px solid #b94422; }
 .queue-panel { margin-top: 36px; padding: 24px; color: #eaf2ed; background: #132d25; box-shadow: 0 18px 45px #24352c25; }
 .queue-heading, .queue-summary, .queue-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .queue-heading h2 { margin-top: 4px; }

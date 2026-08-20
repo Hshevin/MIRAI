@@ -36,6 +36,7 @@ type TimelineItem = {
   box: [number, number, number, number];
   confidence: number;
 };
+type Page = "upload" | "workspace" | "queue";
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -63,6 +64,7 @@ function formatFileSize(bytes: number) {
 }
 
 function App() {
+  const [page, setPage] = useState<Page>("upload");
   const [video, setVideo] = useState<Video | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
@@ -131,6 +133,7 @@ function App() {
     setSelectedFile(null);
     setArtifactId(null);
     setBusy(false);
+    setPage("upload");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -140,7 +143,16 @@ function App() {
     setBusy(true);
     setMessage("");
     try {
-      setVideo(await json<Video>(`${API}/videos`, { method: "POST", body: form }));
+      const nextVideo = await json<Video>(`${API}/videos`, { method: "POST", body: form });
+      setVideo(nextVideo);
+      setJob(null);
+      setPeople([]);
+      setSelected(null);
+      setRevision(null);
+      setTimeline([]);
+      setArtifactId(null);
+      setSelectedFile(null);
+      setPage("workspace");
     } catch (error) {
       setMessage(String(error));
     } finally {
@@ -239,6 +251,7 @@ function App() {
 
   const tracks = Array.from(new Set(timeline.map((item) => item.tracklet_id)));
   const revisionJobActive = Boolean(job && ["queued", "running"].includes(job.status));
+  const activeJobCount = queue.filter((item) => ["queued", "running"].includes(item.status)).length;
 
   return (
     <main>
@@ -246,13 +259,17 @@ function App() {
         <span className="eyebrow">PRIMARY SUBJECT PRIVACY</span>
         <h1>Keep one person. Hide everything else.</h1>
         <p>Discover every appearance, review uncertain identity matches, then export only the approved subject.</p>
-        {video && <button className="new-video" onClick={startAnotherVideo}>Upload another video</button>}
+        <nav aria-label="Main navigation">
+          <button className={page === "upload" ? "active" : ""} onClick={() => setPage("upload")}>Upload</button>
+          <button className={page === "workspace" ? "active" : ""} disabled={!video} onClick={() => setPage("workspace")}>Current video</button>
+          <button className={page === "queue" ? "active" : ""} onClick={() => setPage("queue")}>Queue <span>{activeJobCount}</span></button>
+        </nav>
       </header>
 
-      <section className="queue-panel" aria-labelledby="queue-title">
+      {page === "queue" && <section className="queue-panel" aria-labelledby="queue-title">
         <div className="queue-heading">
           <div><span className="eyebrow">LIVE STATUS</span><h2 id="queue-title">Processing queue</h2></div>
-          <span>{queue.filter((item) => ["queued", "running"].includes(item.status)).length} active</span>
+          <span>{activeJobCount} active</span>
         </div>
         {queueError && <p className="error" role="alert">Queue unavailable: {queueError}</p>}
         {!queueError && queue.length === 0 && <p>No processing jobs yet.</p>}
@@ -275,14 +292,15 @@ function App() {
             </article>
           ))}
         </div>
-      </section>
+      </section>}
 
-      {!video && (
+      {page === "upload" && (
         <form className="panel upload" onSubmit={upload}>
           <span className="step">01</span>
           <div>
             <h2>Upload a video</h2>
             <p>Initial target: 1080p, up to 30 minutes.</p>
+            {video && <p className="current-video-note">Currently editing <strong>{video.original_name}</strong>. Uploading here starts a new workspace; existing jobs remain in Queue.</p>}
             <div className="upload-actions">
               <label className="button">
                 {selectedFile ? "Choose another video" : "Choose video"}
@@ -304,7 +322,7 @@ function App() {
         </form>
       )}
 
-      {video && !selected && (
+      {page === "workspace" && video && !selected && (
         <section className="panel">
           <div className="section-head"><span className="step">02</span><div><h2>{video.original_name}</h2><p>{video.width}×{video.height} · {formatTime(video.duration_us)} · {video.has_audio ? "audio retained" : "no audio"}</p></div></div>
           {!job && <button onClick={analyze}>Analyze people</button>}
@@ -328,7 +346,7 @@ function App() {
         </section>
       )}
 
-      {video && selected && revision && (
+      {page === "workspace" && video && selected && revision && (
         <section className="editor">
           <div className="section-head"><span className="step">03</span><div><h2>Review {selected.display_label}</h2><p>Revision {revision.ordinal}. Left-click adds a positive mask point; right-click adds a negative point.</p></div></div>
           <video ref={player} controls src={`${API}/videos/${video.id}/proxy`} onClick={(event) => addPrompt(event, true)} onContextMenu={(event) => { event.preventDefault(); addPrompt(event, false); }} />
@@ -351,6 +369,7 @@ function App() {
             </div>
           )}
           {artifactId && <a className="download" href={`${API}/artifacts/${artifactId}/download`}>Download validated video</a>}
+          <button className="new-video" onClick={startAnotherVideo}>Finish and upload another video</button>
         </section>
       )}
       {message && <p className="notice">{message}</p>}
