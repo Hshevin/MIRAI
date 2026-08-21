@@ -10,6 +10,8 @@
 
 ## Product
 
+The project is named MIRAI (Masked Identity Rendering And Isolation). The Python package, CLI entry points, and environment variable prefix remain `figure_detection` / `figure-detection` / `FIGURE_DETECTION_*`.
+
 The application analyzes a video, discovers and tracks people, lets a user select and correct one primary identity, then exports a video in which only approved primary-person pixels are clear. Audio is preserved but is not anonymized.
 
 ## Architecture
@@ -95,3 +97,4 @@ Milestones 0–2 and the functional render slice are complete: revisioned select
 - 2026-08-20: Expired running-job leases are reclaimable, and uncaught per-job failures are logged and finalized without terminating the worker loop.
 - 2026-08-20: The API exposes a persistent recent-job queue joined with video names and published artifacts; the UI polls it independently of the open editor and provides progress, errors, cancellation, and downloads.
 - 2026-08-20: The browser workflow uses separate Upload, Current Video, and Queue views with persistent navigation; changing views never cancels background jobs.
+- 2026-08-21: The project is branded MIRAI (Masked Identity Rendering And Isolation); the package, CLI, and environment variable names are unchanged.

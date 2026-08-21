@@ -1,6 +1,6 @@
-# Figure Detection
+# MIRAI — Masked Identity Rendering And Isolation
 
-A local, privacy-first video application that keeps one selected person visible and anonymizes every other visual pixel.
+MIRAI is a local, privacy-first video application that keeps one selected person visible and anonymizes every other visual pixel. The Python package, CLI entry points, and environment variables keep the `figure-detection` / `FIGURE_DETECTION_*` names.
 
 See [AGENTS.md](AGENTS.md) for the architecture, privacy invariants, and agent development rules.
 
