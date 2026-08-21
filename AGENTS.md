@@ -80,6 +80,12 @@ FFmpeg and FFprobe 6.1+ must be on `PATH`. GPU jobs require a CUDA-capable NVIDI
 
 Commit automatically after a coherent milestone passes its relevant tests. Use descriptive conventional messages, stage only milestone-owned files, and include this guide when architecture changes. Report commit hashes in the handoff.
 
+## Remote repository
+
+- Remote: `origin` → `git@github.com:Hshevin/MIRAI.git` (SSH). Local `main` tracks `origin/main`.
+- Authentication uses the local SSH key `~/.ssh/id_ed25519` (no passphrase) registered as a GitHub SSH key. HTTPS pushes will fail without credentials; always use the SSH URL.
+- Push only when the user explicitly requests it (see the non-negotiable rules above).
+
 ## Current status
 
 Milestones 0–2 and the functional render slice are complete: revisioned selection, identity overrides, normalized point/box prompts, privacy settings, gallery/timeline UI, conservative compositing, optional SAM 2.1 detail refinement, PTS-aware H.264 rendering, audio mux, validation, and artifact download are implemented. SAM video-memory propagation, flow stabilization, and production GPU acceptance remain outstanding.
@@ -98,3 +104,4 @@ Milestones 0–2 and the functional render slice are complete: revisioned select
 - 2026-08-20: The API exposes a persistent recent-job queue joined with video names and published artifacts; the UI polls it independently of the open editor and provides progress, errors, cancellation, and downloads.
 - 2026-08-20: The browser workflow uses separate Upload, Current Video, and Queue views with persistent navigation; changing views never cancels background jobs.
 - 2026-08-21: The project is branded MIRAI (Masked Identity Rendering And Isolation); the package, CLI, and environment variable names are unchanged.
+- 2026-08-21: Canonical remote is GitHub `Hshevin/MIRAI` over SSH; see "Remote repository".
