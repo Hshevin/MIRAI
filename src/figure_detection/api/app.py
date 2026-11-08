@@ -8,10 +8,11 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from figure_detection.api.projects import summarize_video
 from figure_detection.api.schemas import (
     HealthResponse,
     IdentityOverrideCreate,
@@ -29,6 +30,8 @@ from figure_detection.api.schemas import (
     SelectionRevisionResponse,
     ThumbnailResponse,
     TimelineDetectionResponse,
+    VideoDeleteResponse,
+    VideoListResponse,
     VideoResponse,
 )
 from figure_detection.domain.enums import JobKind, JobStatus, VideoState
@@ -50,6 +53,7 @@ from figure_detection.storage.models import (
     Tracklet,
     Video,
 )
+from figure_detection.storage.purge import purge_video
 
 
 def _binary_available(name: str) -> bool:
@@ -149,19 +153,67 @@ async def upload_video(
     return video
 
 
+def _live_video(session: Session, video_id: str) -> Video:
+    video = session.get(Video, video_id)
+    if video is None or video.state == VideoState.DELETED:
+        raise HTTPException(status_code=404, detail="Video not found")
+    return video
+
+
+@app.get("/api/v1/videos", response_model=VideoListResponse)
+def list_videos(
+    session: Annotated[Session, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> VideoListResponse:
+    videos = session.scalars(select(Video).where(Video.state != VideoState.DELETED)).all()
+    summaries = sorted(
+        (summarize_video(session, video) for video in videos),
+        key=lambda item: item.last_activity_at,
+        reverse=True,
+    )[:limit]
+    return VideoListResponse(
+        items=summaries,
+        total=len(videos),
+        storage_bytes_total=sum(item.storage_bytes for item in summaries),
+    )
+
+
+@app.delete("/api/v1/videos/{video_id}", response_model=VideoDeleteResponse)
+def delete_video(video_id: str, session: Annotated[Session, Depends(get_session)]) -> JSONResponse:
+    video = _live_video(session, video_id)
+    video.state = VideoState.DELETED
+    jobs = session.scalars(
+        select(Job).where(
+            Job.video_id == video_id, Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])
+        )
+    ).all()
+    running = False
+    cancelled_ids = []
+    for job in jobs:
+        cancelled_ids.append(job.id)
+        job.cancel_requested = True
+        if job.status == JobStatus.QUEUED:
+            job.status = JobStatus.CANCELLED
+            job.stage = "cancelled"
+        else:
+            running = True
+    session.commit()
+    purged = not running and purge_video(session, video_id)
+    result = VideoDeleteResponse(
+        id=video_id, status="deleted" if purged else "deleting", cancelled_job_ids=cancelled_ids
+    )
+    return JSONResponse(result.model_dump(), status_code=200 if purged else 202)
+
+
 @app.get("/api/v1/videos/{video_id}", response_model=VideoResponse)
 def get_video(video_id: str, session: Annotated[Session, Depends(get_session)]) -> Video:
-    video = session.get(Video, video_id)
-    if video is None:
-        raise HTTPException(status_code=404, detail="Video not found")
+    video = _live_video(session, video_id)
     return video
 
 
 @app.get("/api/v1/videos/{video_id}/proxy", response_class=FileResponse)
 def get_proxy(video_id: str, session: Annotated[Session, Depends(get_session)]) -> FileResponse:
-    video = session.get(Video, video_id)
-    if video is None:
-        raise HTTPException(status_code=404, detail="Video not found")
+    video = _live_video(session, video_id)
     path = Path(video.source_path).parent / "proxy.mp4"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Proxy not available")
@@ -175,6 +227,10 @@ def get_thumbnail(
     thumbnail = session.get(Thumbnail, thumbnail_id)
     if thumbnail is None or not Path(thumbnail.path).is_file():
         raise HTTPException(status_code=404, detail="Thumbnail not found")
+    person = session.get(GlobalPerson, thumbnail.person_id)
+    if person is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    _live_video(session, person.video_id)
     return FileResponse(thumbnail.path, media_type="image/jpeg")
 
 
@@ -184,9 +240,7 @@ def get_thumbnail(
     status_code=status.HTTP_202_ACCEPTED,
 )
 def create_analysis_job(video_id: str, session: Annotated[Session, Depends(get_session)]) -> Job:
-    video = session.get(Video, video_id)
-    if video is None:
-        raise HTTPException(status_code=404, detail="Video not found")
+    video = _live_video(session, video_id)
     existing = session.scalar(
         select(Job).where(
             Job.video_id == video_id,
@@ -209,6 +263,7 @@ def get_job(job_id: str, session: Annotated[Session, Depends(get_session)]) -> J
     job = session.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
+    _live_video(session, job.video_id)
     return job
 
 
@@ -220,6 +275,7 @@ def list_jobs(
     rows = session.execute(
         select(Job, Video)
         .join(Video, Job.video_id == Video.id)
+        .where(Video.state != VideoState.DELETED)
         .order_by(Job.created_at.desc())
         .limit(limit)
     ).all()
@@ -253,6 +309,7 @@ def cancel_job(job_id: str, session: Annotated[Session, Depends(get_session)]) -
     job = session.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
+    _live_video(session, job.video_id)
     if job.status in {JobStatus.QUEUED, JobStatus.RUNNING}:
         job.cancel_requested = True
         if job.status == JobStatus.QUEUED:
@@ -267,8 +324,7 @@ def cancel_job(job_id: str, session: Annotated[Session, Depends(get_session)]) -
 def list_people(
     video_id: str, session: Annotated[Session, Depends(get_session)]
 ) -> list[PersonResponse]:
-    if session.get(Video, video_id) is None:
-        raise HTTPException(status_code=404, detail="Video not found")
+    _live_video(session, video_id)
     people = session.scalars(
         select(GlobalPerson)
         .where(GlobalPerson.video_id == video_id)
@@ -318,6 +374,7 @@ def get_timeline(
     start_us: Annotated[int, Query(ge=0)] = 0,
     end_us: Annotated[int | None, Query(gt=0)] = None,
 ) -> list[TimelineDetectionResponse]:
+    _live_video(session, video_id)
     query = (
         select(Detection, Frame, PersonMembership)
         .join(Frame, Detection.frame_id == Frame.id)
@@ -389,6 +446,7 @@ def create_selection(
     payload: SelectionCreate,
     session: Annotated[Session, Depends(get_session)],
 ) -> SelectionRevisionResponse:
+    _live_video(session, video_id)
     person = session.get(GlobalPerson, payload.person_id)
     if person is None or person.video_id != video_id:
         raise HTTPException(status_code=404, detail="Person not found in video")
@@ -422,8 +480,7 @@ def list_selection_revisions(
     session: Annotated[Session, Depends(get_session)],
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[SelectionRevisionResponse]:
-    if session.get(Video, video_id) is None:
-        raise HTTPException(status_code=404, detail="Video not found")
+    _live_video(session, video_id)
     revisions = session.scalars(
         select(SelectionRevision)
         .where(SelectionRevision.video_id == video_id)
@@ -443,6 +500,7 @@ def get_selection_revision(
     revision = session.get(SelectionRevision, revision_id)
     if revision is None:
         raise HTTPException(status_code=404, detail="Revision not found")
+    _live_video(session, revision.video_id)
     try:
         chain = revision_chain(session, revision)
     except ValueError as exc:
@@ -520,6 +578,7 @@ def update_revision_settings(
     parent = session.get(SelectionRevision, revision_id)
     if parent is None:
         raise HTTPException(status_code=404, detail="Revision not found")
+    _live_video(session, parent.video_id)
     revision = _next_revision(session, parent, payload)
     session.commit()
     session.refresh(revision)
@@ -540,6 +599,7 @@ def add_identity_override(
     tracklet = session.get(Tracklet, payload.tracklet_id)
     if parent is None or tracklet is None or tracklet.video_id != parent.video_id:
         raise HTTPException(status_code=404, detail="Revision or tracklet not found")
+    _live_video(session, parent.video_id)
     revision = _next_revision(session, parent)
     override = IdentityOverride(
         revision_id=revision.id,
@@ -567,6 +627,7 @@ def add_mask_prompt(
     parent = session.get(SelectionRevision, revision_id)
     if parent is None:
         raise HTTPException(status_code=404, detail="Revision not found")
+    _live_video(session, parent.video_id)
     revision = _next_revision(session, parent)
     prompt = MaskPrompt(
         revision_id=revision.id,
@@ -594,6 +655,7 @@ def create_revision_job(
     revision = session.get(SelectionRevision, revision_id)
     if revision is None:
         raise HTTPException(status_code=404, detail="Revision not found")
+    _live_video(session, revision.video_id)
     active_jobs = session.scalars(
         select(Job).where(
             Job.video_id == revision.video_id,
@@ -622,6 +684,7 @@ def download_artifact(
     artifact = session.get(Artifact, artifact_id)
     if artifact is None or not artifact.valid or not Path(artifact.path).is_file():
         raise HTTPException(status_code=404, detail="Validated artifact not found")
+    _live_video(session, artifact.video_id)
     return FileResponse(
         artifact.path,
         media_type="video/mp4",

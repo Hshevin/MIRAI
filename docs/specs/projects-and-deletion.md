@@ -116,10 +116,14 @@
 def purge_video(session: Session, video_id: str) -> bool:
     """Delete every row and file of a DELETED video. Idempotent; returns False if nothing to do."""
 
+
 def purge_deleted_videos(session: Session) -> list[str]:
     """Purge all DELETED videos that have no running job. Returns purged ids."""
 
-def sweep_orphan_project_dirs(projects_dir: Path, known_ids: set[str], min_age_s: float = 3600) -> list[Path]:
+
+def sweep_orphan_project_dirs(
+    projects_dir: Path, known_ids: set[str], min_age_s: float = 3600
+) -> list[Path]:
     """Remove project directories with no DB row, but only if untouched for min_age_s."""
 ```
 

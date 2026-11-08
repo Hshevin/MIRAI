@@ -7,7 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from numpy.typing import NDArray
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.orm import Session
 
 from figure_detection.domain.enums import VideoState
@@ -272,9 +272,12 @@ def analyze_video(
                         )
                     )
 
-    video.state = VideoState.READY
-    video.error_code = None
-    video.error_detail = None
+    # Completion must never resurrect a project deleted during analysis.
+    session.execute(
+        update(Video)
+        .where(Video.id == video.id, Video.state != VideoState.DELETED)
+        .values(state=VideoState.READY, error_code=None, error_detail=None)
+    )
     session.commit()
     if progress:
         progress("complete", 1.0)

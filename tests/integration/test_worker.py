@@ -47,3 +47,33 @@ def test_only_analysis_failure_marks_video_failed(tmp_path, monkeypatch, kind):
         assert job.error_detail == "pipeline failed"
         assert video.state == (VideoState.FAILED if kind == JobKind.ANALYSIS else VideoState.READY)
         assert video.error_detail == ("pipeline failed" if kind == JobKind.ANALYSIS else None)
+
+
+def test_deleted_video_job_is_cancelled(tmp_path, monkeypatch):
+    engine = create_engine(f"sqlite:///{tmp_path / 'deleted.db'}")
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(main, "SessionLocal", sessions)
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("deleted project must never execute")
+
+    monkeypatch.setattr(main, "render_video", unexpected)
+    with sessions() as session:
+        video = Video(
+            original_name="deleted",
+            source_path=str(tmp_path / "source"),
+            sha256="0" * 64,
+            size_bytes=1,
+            state=VideoState.DELETED,
+        )
+        session.add(video)
+        session.flush()
+        job = Job(video_id=video.id, kind=JobKind.RENDER)
+        session.add(job)
+        session.commit()
+        job_id = job.id
+    assert main.lease_next_job("test") is None
+    main.process_job(job_id)
+    with sessions() as session:
+        assert session.get(Job, job_id).status == JobStatus.CANCELLED

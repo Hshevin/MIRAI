@@ -178,3 +178,64 @@ class RevisionDetailResponse(BaseModel):
     overrides: list[RevisionOverrideResponse]
     prompts: list[RevisionPromptResponse]
     history: list[RevisionHistoryEntry]
+
+
+class JobBrief(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    kind: str
+    status: str
+    stage: str
+    progress: float
+
+
+class AnalysisBrief(JobBrief):
+    error_detail: str | None
+
+
+class RevisionBrief(BaseModel):
+    id: str
+    ordinal: int
+    person_id: str
+    person_label: str
+    created_at: datetime
+
+
+class RenderBrief(BaseModel):
+    artifact_id: str
+    revision_id: str | None
+    revision_ordinal: int | None
+    created_at: datetime
+
+
+class VideoSummaryResponse(BaseModel):
+    id: str
+    original_name: str
+    width: int | None
+    height: int | None
+    duration_us: int | None
+    size_bytes: int
+    has_audio: bool
+    created_at: datetime
+    state: str
+    last_activity_at: datetime
+    storage_bytes: int
+    cover_thumbnail_id: str | None
+    person_count: int
+    latest_analysis: AnalysisBrief | None
+    active_job: JobBrief | None
+    latest_revision: RevisionBrief | None
+    revision_count: int
+    latest_render: RenderBrief | None
+
+
+class VideoListResponse(BaseModel):
+    items: list[VideoSummaryResponse]
+    total: int
+    storage_bytes_total: int
+
+
+class VideoDeleteResponse(BaseModel):
+    id: str
+    status: Literal["deleted", "deleting"]
+    cancelled_job_ids: list[str]

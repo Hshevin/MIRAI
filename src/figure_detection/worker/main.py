@@ -14,6 +14,7 @@ from figure_detection.pipeline.render import render_video
 from figure_detection.settings import get_settings
 from figure_detection.storage.database import SessionLocal, create_schema
 from figure_detection.storage.models import Job, Video
+from figure_detection.storage.purge import purge_deleted_videos, sweep_orphan_project_dirs
 from figure_detection.vision.adapters import (
     BoxMotPersonTracker,
     BoxMotReIdEncoder,
@@ -35,7 +36,9 @@ def lease_next_job(owner: str) -> str | None:
     with SessionLocal.begin() as session:
         job = session.scalar(
             select(Job)
+            .join(Video, Job.video_id == Video.id)
             .where(
+                Video.state != VideoState.DELETED,
                 or_(
                     Job.status == JobStatus.QUEUED,
                     and_(
@@ -43,7 +46,7 @@ def lease_next_job(owner: str) -> str | None:
                         Job.lease_expires_at.is_not(None),
                         Job.lease_expires_at < now,
                     ),
-                )
+                ),
             )
             .order_by(Job.created_at)
             .limit(1)
@@ -72,6 +75,12 @@ def process_job(job_id: str) -> None:
         if video is None:
             job.status = JobStatus.FAILED
             job.error_code = "VIDEO_NOT_FOUND"
+            session.commit()
+            return
+
+        if video.state == VideoState.DELETED:
+            job.status = JobStatus.CANCELLED
+            job.stage = "cancelled"
             session.commit()
             return
 
@@ -143,7 +152,7 @@ def process_job(job_id: str) -> None:
             job.stage = "failed"
             job.error_code = type(exc).__name__.upper()
             job.error_detail = str(exc)
-            if video and job.kind == JobKind.ANALYSIS:
+            if video and video.state != VideoState.DELETED and job.kind == JobKind.ANALYSIS:
                 video.state = VideoState.FAILED
                 video.error_code = job.error_code
                 video.error_detail = job.error_detail
@@ -151,6 +160,17 @@ def process_job(job_id: str) -> None:
             job.lease_owner = None
             job.lease_expires_at = None
             session.commit()
+
+
+def cleanup_projects(*, sweep: bool = False) -> None:
+    try:
+        with SessionLocal() as session:
+            purge_deleted_videos(session)
+            if sweep:
+                known_ids = set(session.scalars(select(Video.id)))
+                sweep_orphan_project_dirs(get_settings().projects_dir, known_ids)
+    except Exception:
+        logger.exception("Project cleanup failed; worker will continue")
 
 
 def run() -> None:
@@ -172,8 +192,10 @@ def run() -> None:
         extra={"component": "worker"},
     )
     create_schema()
+    cleanup_projects(sweep=True)
     owner = f"{socket.gethostname()}:{os.getpid()}"
     while True:
+        cleanup_projects()
         if job_id := lease_next_job(owner):
             try:
                 process_job(job_id)

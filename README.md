@@ -165,6 +165,8 @@ Planned interaction and feature work is tracked in [`docs/ux-roadmap.md`](docs/u
 
 ## Runtime data
 
+Delete projects from the project menu in the UI to remove source media, analysis, revisions, and exports together. Do not manually delete directories under `var/projects`: the database and files must be cleaned up together. Running jobs are cancelled before their files are removed.
+
 Uploads, the SQLite database, proxies, thumbnails, previews, and rendered outputs are stored under `var/`. Model weights, runtime data, and uploaded videos are excluded from Git.
 
 To use a different runtime directory:
