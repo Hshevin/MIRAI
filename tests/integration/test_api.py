@@ -28,6 +28,7 @@ def test_list_jobs_includes_video_name_and_artifact() -> None:
         error_code=None,
         error_detail=None,
         result_json='{"artifact_id": "artifact-1"}',
+        payload_json='{"revision_id": "revision-1"}',
         created_at=datetime.now(UTC),
     )
     video = SimpleNamespace(original_name="family.mov")
@@ -38,3 +39,4 @@ def test_list_jobs_includes_video_name_and_artifact() -> None:
 
     assert result[0].video_name == "family.mov"
     assert result[0].artifact_id == "artifact-1"
+    assert result[0].revision_id == "revision-1"

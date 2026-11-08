@@ -19,7 +19,12 @@ from figure_detection.api.schemas import (
     MaskPromptCreate,
     PersonResponse,
     QueueJobResponse,
+    RenderSettings,
+    RevisionDetailResponse,
     RevisionEditResponse,
+    RevisionHistoryEntry,
+    RevisionOverrideResponse,
+    RevisionPromptResponse,
     SelectionCreate,
     SelectionRevisionResponse,
     ThumbnailResponse,
@@ -28,6 +33,7 @@ from figure_detection.api.schemas import (
 )
 from figure_detection.domain.enums import JobKind, JobStatus, VideoState
 from figure_detection.media.probe import MediaProbeError, probe_media
+from figure_detection.pipeline.revisions import revision_chain
 from figure_detection.settings import get_settings
 from figure_detection.storage.database import create_schema, get_session
 from figure_detection.storage.models import (
@@ -220,6 +226,7 @@ def list_jobs(
     output = []
     for job, video in rows:
         result = json.loads(job.result_json) if job.result_json else {}
+        payload = json.loads(job.payload_json) if job.payload_json else {}
         output.append(
             QueueJobResponse(
                 id=job.id,
@@ -234,6 +241,7 @@ def list_jobs(
                 error_detail=job.error_detail,
                 result_json=job.result_json,
                 artifact_id=result.get("artifact_id"),
+                revision_id=payload.get("revision_id"),
                 created_at=job.created_at,
             )
         )
@@ -346,7 +354,7 @@ def _revision_response(revision: SelectionRevision) -> SelectionRevisionResponse
 
 
 def _next_revision(
-    session: Session, parent: SelectionRevision, settings_json: str | None = None
+    session: Session, parent: SelectionRevision, settings: RenderSettings | None = None
 ) -> SelectionRevision:
     ordinal = (
         session.scalar(
@@ -361,8 +369,10 @@ def _next_revision(
         person_id=parent.person_id,
         parent_id=parent.id,
         ordinal=ordinal,
-        settings_json=settings_json or parent.settings_json,
-        expert_acknowledged=parent.expert_acknowledged,
+        settings_json=settings.model_dump_json() if settings else parent.settings_json,
+        expert_acknowledged=(
+            settings.expert_acknowledged if settings else parent.expert_acknowledged
+        ),
     )
     session.add(revision)
     session.flush()
@@ -398,6 +408,119 @@ def create_selection(
         expert_acknowledged=payload.settings.expert_acknowledged,
     )
     session.add(revision)
+    session.commit()
+    session.refresh(revision)
+    return _revision_response(revision)
+
+
+@app.get(
+    "/api/v1/videos/{video_id}/selection-revisions",
+    response_model=list[SelectionRevisionResponse],
+)
+def list_selection_revisions(
+    video_id: str,
+    session: Annotated[Session, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[SelectionRevisionResponse]:
+    if session.get(Video, video_id) is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    revisions = session.scalars(
+        select(SelectionRevision)
+        .where(SelectionRevision.video_id == video_id)
+        .order_by(SelectionRevision.ordinal.desc())
+        .limit(limit)
+    ).all()
+    return [_revision_response(revision) for revision in revisions]
+
+
+@app.get(
+    "/api/v1/selection-revisions/{revision_id}",
+    response_model=RevisionDetailResponse,
+)
+def get_selection_revision(
+    revision_id: str, session: Annotated[Session, Depends(get_session)]
+) -> RevisionDetailResponse:
+    revision = session.get(SelectionRevision, revision_id)
+    if revision is None:
+        raise HTTPException(status_code=404, detail="Revision not found")
+    try:
+        chain = revision_chain(session, revision)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    overrides: list[RevisionOverrideResponse] = []
+    prompts: list[RevisionPromptResponse] = []
+    history: list[RevisionHistoryEntry] = []
+    for item in chain:
+        item_overrides = session.scalars(
+            select(IdentityOverride).where(IdentityOverride.revision_id == item.id)
+        ).all()
+        item_prompts = session.scalars(
+            select(MaskPrompt).where(MaskPrompt.revision_id == item.id)
+        ).all()
+        overrides.extend(
+            RevisionOverrideResponse(
+                id=row.id,
+                revision_id=item.id,
+                revision_ordinal=item.ordinal,
+                tracklet_id=row.tracklet_id,
+                start_us=row.start_us,
+                end_us=row.end_us,
+                decision=row.decision,
+            )
+            for row in item_overrides
+        )
+        prompts.extend(
+            RevisionPromptResponse(
+                id=row.id,
+                revision_id=item.id,
+                revision_ordinal=item.ordinal,
+                timestamp_us=row.timestamp_us,
+                kind=row.kind,
+                positive=row.positive,
+                coordinates=json.loads(row.coordinates_json),
+            )
+            for row in item_prompts
+        )
+        if item_overrides:
+            change = "override"
+        elif item_prompts:
+            change = "prompt"
+        elif item.parent_id is None:
+            change = "selection"
+        else:
+            change = "settings"
+        history.append(
+            RevisionHistoryEntry(
+                id=item.id,
+                parent_id=item.parent_id,
+                ordinal=item.ordinal,
+                change=change,
+                created_at=item.created_at,
+            )
+        )
+    return RevisionDetailResponse(
+        revision=_revision_response(revision),
+        overrides=overrides,
+        prompts=prompts,
+        history=history,
+    )
+
+
+@app.post(
+    "/api/v1/selection-revisions/{revision_id}/settings",
+    response_model=SelectionRevisionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def update_revision_settings(
+    revision_id: str,
+    payload: RenderSettings,
+    session: Annotated[Session, Depends(get_session)],
+) -> SelectionRevisionResponse:
+    """Derive a child revision with new settings; earlier corrections stay in effect."""
+    parent = session.get(SelectionRevision, revision_id)
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Revision not found")
+    revision = _next_revision(session, parent, payload)
     session.commit()
     session.refresh(revision)
     return _revision_response(revision)

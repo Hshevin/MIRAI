@@ -47,7 +47,7 @@ class EffectiveSelection:
         return included
 
 
-def _revision_chain(session: Session, leaf: SelectionRevision) -> list[SelectionRevision]:
+def revision_chain(session: Session, leaf: SelectionRevision) -> list[SelectionRevision]:
     chain = [leaf]
     current = leaf
     seen = {leaf.id}
@@ -75,7 +75,7 @@ def resolve_selection(session: Session, revision_id: str) -> EffectiveSelection:
     )
     overrides: list[EffectiveOverride] = []
     prompts: list[EffectivePrompt] = []
-    for item in _revision_chain(session, revision):
+    for item in revision_chain(session, revision):
         overrides.extend(
             EffectiveOverride(row.tracklet_id, row.start_us, row.end_us, row.decision == "include")
             for row in session.scalars(

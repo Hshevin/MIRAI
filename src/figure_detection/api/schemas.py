@@ -47,6 +47,7 @@ class JobResponse(BaseModel):
 class QueueJobResponse(JobResponse):
     video_name: str
     artifact_id: str | None = None
+    revision_id: str | None = None
 
 
 class ThumbnailResponse(BaseModel):
@@ -142,3 +143,38 @@ class MaskPromptCreate(BaseModel):
 class RevisionEditResponse(BaseModel):
     revision: SelectionRevisionResponse
     edit_id: str
+
+
+class RevisionOverrideResponse(BaseModel):
+    id: str
+    revision_id: str
+    revision_ordinal: int
+    tracklet_id: str
+    start_us: int
+    end_us: int
+    decision: Literal["include", "exclude"]
+
+
+class RevisionPromptResponse(BaseModel):
+    id: str
+    revision_id: str
+    revision_ordinal: int
+    timestamp_us: int
+    kind: Literal["point", "box"]
+    positive: bool
+    coordinates: list[float]
+
+
+class RevisionHistoryEntry(BaseModel):
+    id: str
+    parent_id: str | None
+    ordinal: int
+    change: Literal["selection", "settings", "override", "prompt"]
+    created_at: datetime
+
+
+class RevisionDetailResponse(BaseModel):
+    revision: SelectionRevisionResponse
+    overrides: list[RevisionOverrideResponse]
+    prompts: list[RevisionPromptResponse]
+    history: list[RevisionHistoryEntry]

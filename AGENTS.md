@@ -74,6 +74,8 @@ FFmpeg and FFprobe 6.1+ must be on `PATH`. GPU jobs require a CUDA-capable NVIDI
 - Selection and correction data is immutable and revisioned; jobs bind to one revision and settings snapshot.
 - Artifacts become downloadable only after validation and atomic publication.
 - Expert mask expansion must be explicitly acknowledged and recorded.
+- Settings changes derive a child revision (`POST /selection-revisions/{id}/settings`); earlier overrides and prompts stay in effect. Only the initial person selection creates a parentless revision.
+- `GET /selection-revisions/{id}` returns the revision with every override, prompt, and history entry inherited along its parent chain; undo/restore re-points the client at an ancestor instead of mutating history.
 - Vision packages import lazily. The base/dev environment must support API and algorithm tests without CUDA or model weights; GPU workers use `uv sync --extra vision`.
 
 ## Git policy
@@ -105,3 +107,4 @@ Milestones 0–2 and the functional render slice are complete: revisioned select
 - 2026-08-20: The browser workflow uses separate Upload, Current Video, and Queue views with persistent navigation; changing views never cancels background jobs.
 - 2026-08-21: The project is branded MIRAI (Masked Identity Rendering And Isolation); the package, CLI, and environment variable names are unchanged.
 - 2026-08-21: Canonical remote is GitHub `Hshevin/MIRAI` over SSH; see "Remote repository".
+- 2026-11-09: Settings edits chain from the current revision so they no longer discard corrections; revision detail, per-video revision listing, and job `revision_id` in the queue let the UI restore state after reload.
