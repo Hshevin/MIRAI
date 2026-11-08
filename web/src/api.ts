@@ -11,6 +11,8 @@ import type {
   RevisionDetail,
   RevisionEditResponse,
   Video,
+  VideoList,
+  VideoDeleteResult,
 } from "./types";
 
 export const API_BASE: string =
@@ -226,4 +228,12 @@ export function errorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+export function listVideos(): Promise<VideoList> {
+  return request("/videos");
+}
+
+export function deleteVideo(id: string): Promise<VideoDeleteResult> {
+  return request(`/videos/${id}`, { method: "DELETE" });
 }

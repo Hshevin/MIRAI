@@ -20,13 +20,32 @@ import { ToastContext, ToastViewport } from "./components/Toasts";
 import type { Toast, ToastKind } from "./components/Toasts";
 import { QueueDrawer } from "./components/QueueDrawer";
 import { CheckIcon, LayersIcon } from "./components/Icons";
-import { UploadView } from "./views/UploadView";
+import { HomeView } from "./views/HomeView";
 import { AnalyzeView } from "./views/AnalyzeView";
 import { PeopleGallery } from "./views/PeopleGallery";
 import { EditorView } from "./views/EditorView";
 
 const VIDEO_KEY = "mirai.videoId";
-const REVISION_KEY = "mirai.revisionId";
+const REVISION_KEY = "mirai.revisionByVideo";
+const LEGACY_REVISION_KEY = "mirai.revisionId";
+
+function savedRevisions(): Record<string, string> {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(REVISION_KEY) ?? "{}");
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return Object.fromEntries(Object.entries(value).filter(([, id]) => typeof id === "string"));
+    }
+  } catch { /* Invalid saved data is discarded. */ }
+  return {};
+}
+
+function forgetVideo(id: string) {
+  const mapping = savedRevisions();
+  delete mapping[id];
+  window.localStorage.setItem(REVISION_KEY, JSON.stringify(mapping));
+  if (window.localStorage.getItem(VIDEO_KEY) === id) window.localStorage.removeItem(VIDEO_KEY);
+  window.localStorage.removeItem(LEGACY_REVISION_KEY);
+}
 const TOAST_TTL_MS = 4500;
 const HEALTH_POLL_MS = 15_000;
 const QUEUE_POLL_MS = 1000;
@@ -109,6 +128,9 @@ function Shell() {
   const toastTimers = useRef<number[]>([]);
   const seenStatuses = useRef<Map<string, string> | null>(null);
   const handledAnalysis = useRef<string | null>(null);
+  const openingGeneration = useRef(0);
+  const resumed = useRef(false);
+  const [homeVersion, setHomeVersion] = useState(0);
 
   const dismissToast = useCallback((id: number) => {
     setToasts((items) => items.filter((toast) => toast.id !== id));
@@ -200,60 +222,14 @@ function Shell() {
     }
   }, [queue, notify, t]);
 
-  const loadSelectionData = useCallback(async (videoId: string) => {
+  const loadSelectionData = useCallback(async (videoId: string, generation = openingGeneration.current) => {
     const [found, existing] = await Promise.all([getPeople(videoId), listRevisions(videoId)]);
-    setPeople(found);
-    setRevisions(existing);
+    if (generation === openingGeneration.current) {
+      setPeople(found);
+      setRevisions(existing);
+    }
     return { found, existing };
   }, []);
-
-  // Reload-resume: reopen the video and revision that were being worked on.
-  useEffect(() => {
-    const savedVideo = window.localStorage.getItem(VIDEO_KEY);
-    if (!savedVideo) {
-      return;
-    }
-    const savedRevision = window.localStorage.getItem(REVISION_KEY);
-    let cancelled = false;
-    void (async () => {
-      try {
-        const restored = await getVideo(savedVideo);
-        if (cancelled) {
-          return;
-        }
-        setVideo(restored);
-        const { found } = await loadSelectionData(savedVideo);
-        if (cancelled) {
-          return;
-        }
-        if (found.length === 0) {
-          setStep("analyze");
-          return;
-        }
-        if (savedRevision) {
-          try {
-            const detail = await getRevisionDetail(savedRevision);
-            if (!cancelled && detail.revision.video_id === savedVideo) {
-              setRevision(detail.revision);
-              setStep("edit");
-              return;
-            }
-          } catch {
-            window.localStorage.removeItem(REVISION_KEY);
-          }
-        }
-        if (!cancelled) {
-          setStep("select");
-        }
-      } catch {
-        window.localStorage.removeItem(VIDEO_KEY);
-        window.localStorage.removeItem(REVISION_KEY);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadSelectionData]);
 
   const analysisJob = useMemo(
     () => (video ? (queue.find((job) => job.video_id === video.id && job.kind === "analysis") ?? null) : null),
@@ -269,25 +245,89 @@ function Shell() {
       return;
     }
     handledAnalysis.current = analysisJob.id;
-    void loadSelectionData(video.id)
-      .then(() => setStep("select"))
+    const generation = openingGeneration.current;
+    void loadSelectionData(video.id, generation)
+      .then(({ found }) => { if (generation === openingGeneration.current && found.length) setStep("select"); })
       .catch((cause) => notify("error", t("toast.loadFailed", { error: errorMessage(cause) })));
   }, [analysisJob, step, video, loadSelectionData, notify, t]);
 
   const adoptRevision = useCallback((next: Revision) => {
     setRevision(next);
-    window.localStorage.setItem(REVISION_KEY, next.id);
+    window.localStorage.setItem(REVISION_KEY, JSON.stringify({ ...savedRevisions(), [next.video_id]: next.id }));
     setRevisions((items) => (items.some((item) => item.id === next.id) ? items : [next, ...items]));
   }, []);
 
-  function resetWorkflow() {
+  const resetWorkflow = useCallback(() => {
+    openingGeneration.current += 1;
     setVideo(null);
     setPeople([]);
     setRevisions([]);
     setRevision(null);
     handledAnalysis.current = null;
     window.localStorage.removeItem(VIDEO_KEY);
-    window.localStorage.removeItem(REVISION_KEY);
+  }, []);
+
+  const openVideo = useCallback(async (videoId: string) => {
+    const mapping = savedRevisions();
+    const legacy = window.localStorage.getItem(LEGACY_REVISION_KEY);
+    const legacyVideo = window.localStorage.getItem(VIDEO_KEY);
+    if (legacy && legacyVideo) {
+      mapping[legacyVideo] ??= legacy;
+      window.localStorage.setItem(REVISION_KEY, JSON.stringify(mapping));
+    }
+    window.localStorage.removeItem(LEGACY_REVISION_KEY);
+    resetWorkflow();
+    setStep("upload");
+    const generation = openingGeneration.current;
+    const current = () => generation === openingGeneration.current;
+    try {
+      const restored = await getVideo(videoId);
+      const [{ found, existing }, jobs] = await Promise.all([loadSelectionData(videoId, generation), listJobs()]);
+      if (!current()) return;
+      setVideo(restored);
+      setQueue(jobs);
+      window.localStorage.setItem(VIDEO_KEY, videoId);
+      if (!found.length || jobs.some((job) => job.video_id === videoId && job.kind === "analysis" && isActiveJob(job))) {
+        setStep("analyze");
+        return;
+      }
+      const candidates = [...new Set([mapping[videoId], existing[0]?.id].filter((id): id is string => !!id))];
+      for (const id of candidates) {
+        try {
+          const detail = await getRevisionDetail(id);
+          if (!current()) return;
+          if (detail.revision.video_id === videoId) {
+            adoptRevision(detail.revision);
+            setStep("edit");
+            return;
+          }
+        } catch { /* A stale saved revision falls back to the newest revision. */ }
+      }
+      if (current()) setStep("select");
+    } catch {
+      if (!current()) return;
+      forgetVideo(videoId);
+      resetWorkflow();
+      setStep("upload");
+      setHomeVersion((value) => value + 1);
+      notify("error", t("project.missing"));
+    }
+  }, [adoptRevision, loadSelectionData, notify, resetWorkflow, t]);
+
+  useEffect(() => {
+    if (resumed.current) return;
+    resumed.current = true;
+    const id = window.localStorage.getItem(VIDEO_KEY);
+    if (id) void openVideo(id);
+  }, [openVideo]);
+
+  function handleDeleted(id: string) {
+    forgetVideo(id);
+    setQueue((jobs) => jobs.filter((job) => job.video_id !== id));
+    if (video?.id === id) {
+      resetWorkflow();
+      setStep("upload");
+    }
   }
 
   async function startAnalysis(target: Video) {
@@ -374,16 +414,6 @@ function Shell() {
     }
   }
 
-  function resumeCurrent() {
-    if (revision) {
-      setStep("edit");
-    } else if (people.length > 0) {
-      setStep("select");
-    } else if (video) {
-      setStep("analyze");
-    }
-  }
-
   const stepIndex = STEPS.findIndex((item) => item.id === step);
   const activeJobs = queue.filter(isActiveJob);
   const person = revision ? (people.find((item) => item.id === revision.person_id) ?? null) : null;
@@ -392,11 +422,11 @@ function Shell() {
     <ToastContext.Provider value={toastApi}>
       <div className={`app ${step === "edit" ? "is-workspace" : ""}`}>
         <header className="topbar">
-          <div className="brand">
+          <button type="button" className="brand" onClick={() => setStep("upload")}>
             <Logo />
             <span className="brand-name">MIRAI</span>
             <span className="brand-tag">{t("app.tagline")}</span>
-          </div>
+          </button>
 
           <nav aria-label="Workflow">
             <ol className="stepper">
@@ -446,7 +476,7 @@ function Shell() {
 
         <main className="main">
           {step === "upload" && (
-            <UploadView currentVideo={video} onUploaded={handleUploaded} onResume={resumeCurrent} />
+            <HomeView key={homeVersion} onUploaded={handleUploaded} onOpenVideo={openVideo} onDeleted={handleDeleted} />
           )}
           {step === "analyze" && video && (
             <AnalyzeView
@@ -493,6 +523,8 @@ function Shell() {
       <QueueDrawer
         open={queueOpen}
         jobs={queue}
+        currentVideoId={video?.id ?? null}
+        onOpenVideo={openVideo}
         error={queueError}
         onClose={() => setQueueOpen(false)}
         onCancel={(jobId) => void handleCancelJob(jobId)}

@@ -93,7 +93,7 @@ Commit automatically after a coherent milestone passes its relevant tests. Use d
 
 ## Current status
 
-Project listing and two-phase deletion are supported by the API and worker, including bounded orphan-directory cleanup.
+Project listing and two-phase deletion are supported by the API and worker, including bounded orphan-directory cleanup. The Video home lists searchable/sortable projects with covers, storage and derived status; project opening restores a per-video revision from `mirai.revisionByVideo`, and deletion is initiated only from the home card menu.
 
 Milestones 0–2 and the functional render slice are complete: revisioned selection, identity overrides, normalized point/box prompts, privacy settings, gallery/timeline UI, conservative compositing, optional SAM 2.1 detail refinement, PTS-aware H.264 rendering, audio mux, validation, and artifact download are implemented. SAM video-memory propagation, flow stabilization, and production GPU acceptance remain outstanding.
 
@@ -117,3 +117,5 @@ Milestones 0–2 and the functional render slice are complete: revisioned select
 - 2026-11-09: Settings edits chain from the current revision so they no longer discard corrections; revision detail, per-video revision listing, and job `revision_id` in the queue let the UI restore state after reload.
 
 - 2026-11-09: Project summaries derive activity, analysis, revision, and export state independently; deletion tombstones projects before cancelling work and explicitly purging database rows, then safely removing project files.
+
+- 2026-11-09: The first workflow step is the Video project home. Cards and queue entries share project reopening, revision restore is keyed by video, and destructive confirmation uses a native modal dialog with cancel focused by default.

@@ -9,6 +9,8 @@ import { ProgressBar } from "./ProgressBar";
 interface QueueDrawerProps {
   open: boolean;
   jobs: QueueJob[];
+  currentVideoId: string | null;
+  onOpenVideo: (id: string) => Promise<void>;
   error: string | null;
   onClose: () => void;
   onCancel: (jobId: string) => void;
@@ -26,7 +28,7 @@ function formatClock(iso: string, locale: string): string {
       });
 }
 
-export function QueueDrawer({ open, jobs, error, onClose, onCancel }: QueueDrawerProps) {
+export function QueueDrawer({ open, jobs, error, onClose, onCancel, currentVideoId, onOpenVideo }: QueueDrawerProps) {
   const { t, locale } = useI18n();
   const activeCount = jobs.filter(isActiveJob).length;
 
@@ -89,8 +91,9 @@ export function QueueDrawer({ open, jobs, error, onClose, onCancel }: QueueDrawe
                     />
                   )}
                   {job.error_detail && <p className="inline-error small">{job.error_detail}</p>}
-                  {(active || job.artifact_id) && (
+                  {(active || job.artifact_id || job.video_id !== currentVideoId) && (
                     <div className="job-item-actions">
+                      {job.video_id !== currentVideoId && <button type="button" className="btn subtle small" onClick={() => void onOpenVideo(job.video_id).then(onClose)}>{t("queue.open")}</button>}
                       {active && !job.cancel_requested && (
                         <button type="button" className="btn subtle small" onClick={() => onCancel(job.id)}>
                           {t("queue.cancel")}

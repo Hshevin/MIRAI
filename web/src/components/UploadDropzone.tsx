@@ -3,17 +3,11 @@ import type { ChangeEvent, DragEvent } from "react";
 import { errorMessage, uploadVideo } from "../api";
 import { formatBytes } from "../format";
 import { useI18n } from "../i18n";
-import { ProgressBar } from "../components/ProgressBar";
-import { ArrowRightIcon, CpuIcon, MusicIcon, ShieldIcon, UploadIcon } from "../components/Icons";
+import { ProgressBar } from "./ProgressBar";
+import { CpuIcon, MusicIcon, ShieldIcon, UploadIcon } from "./Icons";
 import type { Video } from "../types";
 
-interface UploadViewProps {
-  currentVideo: Video | null;
-  onUploaded: (video: Video) => void;
-  onResume: () => void;
-}
-
-export function UploadView({ currentVideo, onUploaded, onResume }: UploadViewProps) {
+export function UploadDropzone({ onUploaded, compact = false }: { onUploaded: (video: Video) => void; compact?: boolean }) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -59,11 +53,11 @@ export function UploadView({ currentVideo, onUploaded, onResume }: UploadViewPro
   const uploading = file !== null;
 
   return (
-    <section className="page page-narrow" aria-labelledby="upload-title">
-      <header className="page-head center">
+    <section className={`upload-area ${compact ? "compact" : ""}`} aria-labelledby={compact ? undefined : "upload-title"} aria-label={compact ? t("upload.title") : undefined}>
+      {!compact && <header className="page-head center">
         <h1 id="upload-title">{t("upload.title")}</h1>
         <p className="lead">{t("upload.lead")}</p>
-      </header>
+      </header>}
 
       {uploading ? (
         <div className="dropzone busy">
@@ -111,15 +105,7 @@ export function UploadView({ currentVideo, onUploaded, onResume }: UploadViewPro
         </p>
       )}
 
-      {currentVideo && !uploading && (
-        <button type="button" className="resume-card" onClick={onResume}>
-          <span className="muted small">{t("select.resumeTitle")}</span>
-          <strong>{t("upload.resume", { name: currentVideo.original_name })}</strong>
-          <ArrowRightIcon />
-        </button>
-      )}
-
-      <ul className="facts">
+      {!compact && <ul className="facts">
         <li>
           <CpuIcon size={18} />
           <div>
@@ -141,7 +127,7 @@ export function UploadView({ currentVideo, onUploaded, onResume }: UploadViewPro
             <span>{t("upload.fact3")}</span>
           </div>
         </li>
-      </ul>
+      </ul>}
     </section>
   );
 }
