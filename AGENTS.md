@@ -45,6 +45,7 @@ The local MVP uses a two-pass pipeline. Pass 1 caches media timestamps, detectio
 - `web`: browser UI. `web/src/i18n.tsx` holds typed zh/en dictionaries (every key must exist in both); `web/src/styles.css` defines the design tokens.
 - `configs`: versioned model/tracker/privacy/export defaults.
 - `tests`: unit, integration, CV-quality, and end-to-end tests.
+- `docs`: design notes and roadmaps; `docs/ux-roadmap.md` holds the prioritized interaction/feature plan.
 - `var`: runtime database, uploads, proxies, caches, previews, and outputs; never commit.
 - `var/logs`: bounded structured process logs and rotated backups; never commit.
 

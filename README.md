@@ -147,17 +147,21 @@ Open the URL printed by Vite, normally <http://127.0.0.1:5173>.
 
 ## 4. Use the application
 
-1. Upload a video.
-2. Select **Analyze people** and wait for the worker to finish.
-3. Select one person from the gallery.
-4. Review track ranges in the timeline.
-5. Use **Include ±5s** or **Exclude ±5s** to correct identity assignments.
-6. Left-click the video to add a positive subject point.
-7. Right-click the video to add a negative point.
-8. Generate a preview.
-9. Process and download the validated output video.
+The UI is available in Chinese and English (toggle in the top-right corner).
+
+1. **Upload** — drop or choose a video; upload starts immediately and analysis is queued automatically.
+2. **Analyze** — wait for detection, tracking, and identity grouping. You can leave the page; progress is also shown in the **Jobs** drawer.
+3. **Choose person** — pick the one person to keep clear and confirm.
+4. **Edit & export**
+   - Click the frame to add a *keep* or *hide* point, or switch to box mode (`V` point, `B` box, `X` toggles keep/hide, hold `Alt` to invert once).
+   - Drag across the timeline tracks to select a time range, then mark each track in it as visible or hidden in the **Corrections** tab.
+   - Adjust mosaic, blur, and mask boundary in the **Look** tab. Applying creates a new revision and keeps all corrections.
+   - Undo with `⌘Z` / `Ctrl+Z` or restore any revision from the **History** tab.
+   - Generate a preview, then export and download the validated video from the **Export** tab.
 
 Audio is retained and is not anonymized.
+
+Planned interaction and feature work is tracked in [`docs/ux-roadmap.md`](docs/ux-roadmap.md).
 
 ## Runtime data
 
