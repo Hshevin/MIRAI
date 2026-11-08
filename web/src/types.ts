@@ -40,6 +40,7 @@ export interface Job {
 export interface QueueJob extends Job {
   video_name: string;
   artifact_id: string | null;
+  revision_id: string | null;
 }
 
 export interface Thumbnail {
@@ -108,7 +109,45 @@ export interface IdentityOverrideInput {
   decision: "include" | "exclude";
 }
 
-export type Step = "upload" | "analyze" | "select" | "review" | "export";
+export interface RevisionOverride {
+  id: string;
+  revision_id: string;
+  revision_ordinal: number;
+  tracklet_id: string;
+  start_us: number;
+  end_us: number;
+  decision: "include" | "exclude";
+}
+
+export interface RevisionPrompt {
+  id: string;
+  revision_id: string;
+  revision_ordinal: number;
+  timestamp_us: number;
+  kind: "point" | "box";
+  positive: boolean;
+  coordinates: number[];
+}
+
+export type RevisionChange = "selection" | "settings" | "override" | "prompt";
+
+export interface RevisionHistoryEntry {
+  id: string;
+  parent_id: string | null;
+  ordinal: number;
+  change: RevisionChange;
+  created_at: string;
+}
+
+/** A revision plus every correction inherited along its parent chain. */
+export interface RevisionDetail {
+  revision: Revision;
+  overrides: RevisionOverride[];
+  prompts: RevisionPrompt[];
+  history: RevisionHistoryEntry[];
+}
+
+export type Step = "upload" | "analyze" | "select" | "edit";
 
 export interface TimeRange {
   startUs: number;

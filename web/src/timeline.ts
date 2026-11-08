@@ -134,3 +134,48 @@ export function trackletsInRange(
     }))
     .sort((a, b) => b.count - a.count || a.trackletId.localeCompare(b.trackletId));
 }
+
+/** Stable 1-based track numbers in order of first appearance, for human-readable labels. */
+export function trackletNumbers(detections: Detection[]): Map<string, number> {
+  const first = new Map<string, number>();
+  for (const detection of detections) {
+    const seen = first.get(detection.tracklet_id);
+    if (seen === undefined || detection.timestamp_us < seen) {
+      first.set(detection.tracklet_id, detection.timestamp_us);
+    }
+  }
+  const ordered = [...first.entries()].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]));
+  return new Map(ordered.map(([trackletId], index) => [trackletId, index + 1]));
+}
+
+export interface OverrideSpan {
+  tracklet_id: string;
+  start_us: number;
+  end_us: number;
+  decision: "include" | "exclude";
+}
+
+/**
+ * Whether a tracklet is effectively visible within a range: the analysis default
+ * (only confirmed members of the kept person) unless a later override overlapping
+ * the range says otherwise. Overrides are applied in chain order, last wins.
+ */
+export function effectiveVisibility(
+  kind: LaneKind,
+  trackletId: string,
+  overrides: OverrideSpan[],
+  startUs: number,
+  endUs: number,
+): boolean {
+  let visible = kind === "selected";
+  for (const override of overrides) {
+    if (
+      override.tracklet_id === trackletId &&
+      override.start_us <= endUs &&
+      override.end_us >= startUs
+    ) {
+      visible = override.decision === "include";
+    }
+  }
+  return visible;
+}

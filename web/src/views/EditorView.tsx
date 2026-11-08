@@ -1,93 +1,70 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addIdentityOverride,
   addMaskPrompt,
-  artifactUrl,
-  createRevisionJob,
   errorMessage,
-  getJob,
+  getRevisionDetail,
   getTimeline,
-  parseArtifactId,
   proxyUrl,
+  thumbnailUrl,
+  updateRevisionSettings,
 } from "../api";
-import { formatTime } from "../format";
-import { isActiveJob, isTerminalJob } from "../types";
+import { useI18n } from "../i18n";
+import type { MessageKey } from "../i18n";
+import { trackletNumbers } from "../timeline";
 import type {
   Detection,
-  Job,
   MaskPromptInput,
   Person,
   QueueJob,
   RenderSettings,
   Revision,
+  RevisionDetail,
   TimeRange,
   Video,
 } from "../types";
-import { trackletsInRange } from "../timeline";
 import { PromptOverlay } from "../components/PromptOverlay";
+import type { PromptTool } from "../components/PromptOverlay";
+import { PlayerControls } from "../components/PlayerControls";
 import { TimelineStrip } from "../components/TimelineStrip";
 import { SettingsPanel } from "../components/SettingsPanel";
-import { ProgressBar } from "../components/ProgressBar";
+import { CorrectionsPanel } from "../components/CorrectionsPanel";
+import { ExportPanel } from "../components/ExportPanel";
+import { HistoryPanel } from "../components/HistoryPanel";
 import { useToasts } from "../components/Toasts";
+import { BoxIcon, EyeIcon, EyeOffIcon, PointIcon, UndoIcon, UserIcon } from "../components/Icons";
 
-interface TrackedJob {
-  job: Job;
-  revisionId: string;
-  revisionOrdinal: number;
-}
+type Tab = "corrections" | "settings" | "export" | "history";
 
-interface JobResult {
-  artifactId: string;
-  revisionOrdinal: number;
-}
+const TABS: { id: Tab; label: MessageKey }[] = [
+  { id: "corrections", label: "editor.tab.corrections" },
+  { id: "settings", label: "editor.tab.settings" },
+  { id: "export", label: "editor.tab.export" },
+  { id: "history", label: "editor.tab.history" },
+];
 
-/** Polls a queued/running job once a second until it reaches a terminal status. */
-function useJobPolling(
-  tracked: TrackedJob | null,
-  onUpdate: (job: Job) => void,
-  onTerminal: (tracked: TrackedJob, job: Job) => void,
-) {
-  const callbacks = useRef({ onUpdate, onTerminal });
-  callbacks.current = { onUpdate, onTerminal };
-
-  useEffect(() => {
-    if (!tracked || isTerminalJob(tracked.job)) {
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setInterval(() => {
-      void (async () => {
-        try {
-          const next = await getJob(tracked.job.id);
-          if (cancelled) {
-            return;
-          }
-          callbacks.current.onUpdate(next);
-          if (isTerminalJob(next)) {
-            callbacks.current.onTerminal(tracked, next);
-          }
-        } catch {
-          // Transient polling errors are ignored; the next tick retries.
-        }
-      })();
-    }, 1000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [tracked]);
-}
+const FINE_STEP_US = 100_000;
+const COARSE_STEP_US = 1_000_000;
 
 interface EditorViewProps {
   video: Video;
-  person: Person;
+  person: Person | null;
   revision: Revision;
   jobs: QueueJob[];
-  focusExport: boolean;
   onRevision: (revision: Revision) => void;
-  onApplySettings: (settings: RenderSettings) => Promise<void>;
+  onStartJob: (revision: Revision, kind: "preview" | "render") => void;
+  onCancelJob: (jobId: string) => void;
   onSwitchPerson: () => void;
-  onNewVideo: () => void;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return (
+    target.isContentEditable ||
+    ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
+  );
 }
 
 export function EditorView({
@@ -95,129 +72,211 @@ export function EditorView({
   person,
   revision,
   jobs,
-  focusExport,
   onRevision,
-  onApplySettings,
+  onStartJob,
+  onCancelJob,
   onSwitchPerson,
-  onNewVideo,
 }: EditorViewProps) {
+  const { t } = useI18n();
   const { notify } = useToasts();
   const playerRef = useRef<HTMLVideoElement>(null);
-  const exportRef = useRef<HTMLElement>(null);
+  const [tab, setTab] = useState<Tab>("corrections");
+  const [tool, setTool] = useState<PromptTool>({ polarity: "keep", shape: "point" });
   const [currentTimeUs, setCurrentTimeUs] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [playerError, setPlayerError] = useState(false);
   const [detections, setDetections] = useState<Detection[] | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<RevisionDetail | null>(null);
   const [range, setRange] = useState<TimeRange | null>(null);
   const [savingTracklet, setSavingTracklet] = useState<string | null>(null);
-  const [previewTracked, setPreviewTracked] = useState<TrackedJob | null>(null);
-  const [renderTracked, setRenderTracked] = useState<TrackedJob | null>(null);
-  const [previewResult, setPreviewResult] = useState<JobResult | null>(null);
-  const [renderResult, setRenderResult] = useState<JobResult | null>(null);
+  const [mutating, setMutating] = useState(false);
+
+  const personLabel = person?.display_label ?? "—";
 
   useEffect(() => {
     let cancelled = false;
     setDetections(null);
     setTimelineError(null);
-    setRange(null);
     getTimeline(video.id)
-      .then((items) => {
-        if (!cancelled) {
-          setDetections(items);
-        }
-      })
-      .catch((cause) => {
-        if (!cancelled) {
-          setTimelineError(errorMessage(cause));
-        }
-      });
+      .then((items) => !cancelled && setDetections(items))
+      .catch((cause) => !cancelled && setTimelineError(errorMessage(cause)));
     return () => {
       cancelled = true;
     };
   }, [video.id]);
 
+  // Keep the previous detail on screen until the next one arrives to avoid flashing.
   useEffect(() => {
-    if (focusExport) {
-      exportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (detail?.revision.id === revision.id) {
+      return;
     }
-  }, [focusExport]);
+    let cancelled = false;
+    getRevisionDetail(revision.id)
+      .then((next) => !cancelled && setDetail(next))
+      .catch((cause) => !cancelled && notify("error", t("toast.loadFailed", { error: errorMessage(cause) })));
+    return () => {
+      cancelled = true;
+    };
+  }, [revision.id, detail?.revision.id, notify, t]);
 
-  function handleJobTerminal(kind: "preview" | "render", tracked: TrackedJob, job: Job) {
-    const label = kind === "preview" ? "Preview" : "Video processing";
-    if (job.status === "succeeded") {
-      const artifactId = parseArtifactId(job);
-      if (artifactId) {
-        const result = { artifactId, revisionOrdinal: tracked.revisionOrdinal };
-        if (kind === "preview") {
-          setPreviewResult(result);
-        } else {
-          setRenderResult(result);
-        }
-        notify("success", `${label} finished (revision r${tracked.revisionOrdinal}).`);
-        return;
+  // Smooth playhead while playing; timeupdate alone fires only ~4×/s.
+  useEffect(() => {
+    if (!playing) {
+      return;
+    }
+    let frame = 0;
+    const tick = () => {
+      const player = playerRef.current;
+      if (player) {
+        setCurrentTimeUs(Math.round(player.currentTime * 1_000_000));
       }
-    }
-    if (job.status === "failed") {
-      notify("error", `${label} failed: ${job.error_detail ?? "unknown error"}`);
-    } else if (job.status === "cancelled") {
-      notify("info", `${label} cancelled.`);
-    }
-  }
-
-  useJobPolling(
-    previewTracked,
-    (next) => setPreviewTracked((current) => (current ? { ...current, job: next } : current)),
-    (tracked, next) => handleJobTerminal("preview", tracked, next),
-  );
-  useJobPolling(
-    renderTracked,
-    (next) => setRenderTracked((current) => (current ? { ...current, job: next } : current)),
-    (tracked, next) => handleJobTerminal("render", tracked, next),
-  );
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playing]);
 
   const durationUs = useMemo(() => {
     if (video.duration_us && video.duration_us > 0) {
       return video.duration_us;
     }
-    let max = 0;
-    for (const detection of detections ?? []) {
-      max = Math.max(max, detection.timestamp_us);
-    }
-    return max;
+    return (detections ?? []).reduce((max, item) => Math.max(max, item.timestamp_us), 0);
   }, [video.duration_us, detections]);
 
-  const activities = useMemo(
-    () =>
-      range && detections
-        ? trackletsInRange(detections, range.startUs, range.endUs, person.id)
-        : [],
-    [range, detections, person.id],
+  const trackNumbers = useMemo(() => trackletNumbers(detections ?? []), [detections]);
+  const ordinals = useMemo(
+    () => new Map((detail?.history ?? []).map((entry) => [entry.id, entry.ordinal])),
+    [detail],
+  );
+  const currentDetail = detail?.revision.id === revision.id ? detail : null;
+  const overrides = detail?.overrides ?? [];
+  const prompts = detail?.prompts ?? [];
+
+  const seek = useCallback(
+    (us: number) => {
+      const clamped = Math.max(0, Math.min(durationUs || us, us));
+      const player = playerRef.current;
+      if (player) {
+        player.currentTime = clamped / 1_000_000;
+      }
+      setCurrentTimeUs(clamped);
+    },
+    [durationUs],
   );
 
-  const previewActive = previewTracked !== null && isActiveJob(previewTracked.job);
-  const renderActive = renderTracked !== null && isActiveJob(renderTracked.job);
-  const queueBusy = jobs.some(
-    (item) =>
-      item.video_id === video.id &&
-      (item.kind === "preview" || item.kind === "render") &&
-      isActiveJob(item),
-  );
-  const exportBusy = previewActive || renderActive || queueBusy;
-
-  function seek(us: number) {
+  const togglePlay = useCallback(() => {
     const player = playerRef.current;
-    if (player) {
-      player.currentTime = us / 1_000_000;
+    if (!player) {
+      return;
     }
-    setCurrentTimeUs(us);
-  }
+    if (player.paused) {
+      void player.play();
+    } else {
+      player.pause();
+    }
+  }, []);
+
+  /** Adopt a revision returned by an edit; its detail is fetched by the effect above. */
+  const adopt = useCallback(
+    (next: Revision, message: string) => {
+      onRevision(next);
+      notify("success", message);
+    },
+    [onRevision, notify],
+  );
+
+  const restore = useCallback(
+    async (revisionId: string) => {
+      setMutating(true);
+      try {
+        const next = await getRevisionDetail(revisionId);
+        setDetail(next);
+        onRevision(next.revision);
+        notify("info", t("history.restored", { ordinal: next.revision.ordinal }));
+      } catch (cause) {
+        notify("error", t("toast.loadFailed", { error: errorMessage(cause) }));
+      } finally {
+        setMutating(false);
+      }
+    },
+    [onRevision, notify, t],
+  );
+
+  const parentId = currentDetail?.revision.parent_id ?? null;
+  const undo = useCallback(() => {
+    if (parentId && !mutating) {
+      void restore(parentId);
+    }
+  }, [parentId, mutating, restore]);
+
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (event.defaultPrevented || isTypingTarget(event.target)) {
+        return;
+      }
+      const mod = event.metaKey || event.ctrlKey;
+      if (mod && event.key.toLowerCase() === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+      if (mod || event.altKey) {
+        return;
+      }
+      const step = event.shiftKey ? COARSE_STEP_US : FINE_STEP_US;
+      switch (event.key) {
+        case " ":
+          if (event.target instanceof HTMLButtonElement) {
+            return;
+          }
+          event.preventDefault();
+          togglePlay();
+          break;
+        case "ArrowLeft":
+          event.preventDefault();
+          seek(currentTimeUs - step);
+          break;
+        case "ArrowRight":
+          event.preventDefault();
+          seek(currentTimeUs + step);
+          break;
+        case "v":
+        case "V":
+          setTool((current) => ({ ...current, shape: "point" }));
+          break;
+        case "b":
+        case "B":
+          setTool((current) => ({ ...current, shape: "box" }));
+          break;
+        case "x":
+        case "X":
+          setTool((current) => ({ ...current, polarity: current.polarity === "keep" ? "hide" : "keep" }));
+          break;
+        case "Escape":
+          setRange(null);
+          break;
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [undo, togglePlay, seek, currentTimeUs]);
 
   async function savePrompt(input: MaskPromptInput) {
-    const response = await addMaskPrompt(revision.id, input);
-    onRevision(response.revision);
-    notify(
-      "success",
-      `${input.positive ? "Positive" : "Negative"} ${input.kind} saved · revision r${response.revision.ordinal}`,
-    );
+    try {
+      const response = await addMaskPrompt(revision.id, input);
+      adopt(
+        response.revision,
+        t("tool.promptSaved", {
+          polarity: input.positive ? t("tool.keep") : t("tool.hide"),
+          shape: input.kind === "point" ? t("tool.point") : t("tool.box"),
+          ordinal: response.revision.ordinal,
+        }),
+      );
+    } catch (cause) {
+      notify("error", t("tool.promptFailed", { error: errorMessage(cause) }));
+    }
   }
 
   async function saveOverride(trackletId: string, decision: "include" | "exclude") {
@@ -228,235 +287,244 @@ export function EditorView({
     try {
       const response = await addIdentityOverride(revision.id, {
         tracklet_id: trackletId,
-        start_us: Math.max(0, range.startUs),
-        end_us: range.endUs,
+        start_us: Math.max(0, Math.floor(range.startUs)),
+        end_us: Math.max(Math.floor(range.startUs) + 1, Math.ceil(range.endUs)),
         decision,
       });
-      onRevision(response.revision);
-      notify(
-        "success",
-        `${decision === "include" ? "Include" : "Exclude"} override saved · revision r${response.revision.ordinal}`,
+      adopt(
+        response.revision,
+        t("corr.saved", {
+          track: t("timeline.track", { n: trackNumbers.get(trackletId) ?? "?" }),
+          decision: decision === "include" ? t("corr.keep") : t("corr.hide"),
+          ordinal: response.revision.ordinal,
+        }),
       );
     } catch (cause) {
-      notify("error", `Could not save override: ${errorMessage(cause)}`);
+      notify("error", t("corr.failed", { error: errorMessage(cause) }));
     } finally {
       setSavingTracklet(null);
     }
   }
 
-  async function startJob(kind: "preview" | "render") {
+  async function applySettings(next: RenderSettings) {
     try {
-      const job = await createRevisionJob(revision.id, kind);
-      const tracked: TrackedJob = { job, revisionId: revision.id, revisionOrdinal: revision.ordinal };
-      if (kind === "preview") {
-        setPreviewTracked(tracked);
-        setPreviewResult(null);
-      } else {
-        setRenderTracked(tracked);
-        setRenderResult(null);
-      }
-      notify("info", kind === "preview" ? "Preview queued." : "Video processing queued.");
+      const created = await updateRevisionSettings(revision.id, next);
+      adopt(created, t("settings.applied", { ordinal: created.ordinal }));
     } catch (cause) {
-      notify("error", `Could not start ${kind}: ${errorMessage(cause)}`);
+      notify("error", t("settings.failed", { error: errorMessage(cause) }));
+      throw cause;
     }
   }
 
+  const action = tool.polarity === "keep" ? t("tool.actionKeep") : t("tool.actionHide");
+  const thumb = person?.thumbnails[0];
+
   return (
-    <div className="editor">
-      <section className="panel">
-        <div className="editor-head">
-          <div>
-            <h2>Review and correct: {person.display_label}</h2>
-            <p className="hint">
-              Scrub the video, then add mask prompts. Corrections apply to the current selection
-              revision.
-            </p>
-          </div>
-          <div className="editor-head-side">
-            <span className="revision-badge" title="Current selection revision">
-              Revision r{revision.ordinal}
+    <div className="workspace">
+      <div className="stage">
+        <div className="stage-bar">
+          <div className="keeping">
+            <span className="keeping-avatar">
+              {thumb ? <img src={thumbnailUrl(thumb.id)} alt="" /> : <UserIcon size={16} />}
             </span>
+            <div className="keeping-text">
+              <span className="muted small">{t("editor.keeping")}</span>
+              <strong>{personLabel}</strong>
+            </div>
             <button type="button" className="btn ghost small" onClick={onSwitchPerson}>
-              Switch person
+              {t("editor.switchPerson")}
             </button>
-            <button type="button" className="btn ghost small" onClick={onNewVideo}>
-              New video
+          </div>
+
+          <div className="toolbar" role="toolbar" aria-label={t("tool.polarity")}>
+            <div className="segmented" role="group" aria-label={t("tool.polarity")}>
+              <button
+                type="button"
+                className={tool.polarity === "keep" ? "active keep" : ""}
+                aria-pressed={tool.polarity === "keep"}
+                onClick={() => setTool((current) => ({ ...current, polarity: "keep" }))}
+              >
+                <EyeIcon size={15} />
+                {t("tool.keep")}
+              </button>
+              <button
+                type="button"
+                className={tool.polarity === "hide" ? "active hide" : ""}
+                aria-pressed={tool.polarity === "hide"}
+                onClick={() => setTool((current) => ({ ...current, polarity: "hide" }))}
+              >
+                <EyeOffIcon size={15} />
+                {t("tool.hide")}
+              </button>
+            </div>
+            <div className="segmented" role="group" aria-label={t("tool.shape")}>
+              <button
+                type="button"
+                className={tool.shape === "point" ? "active" : ""}
+                aria-pressed={tool.shape === "point"}
+                title="V"
+                onClick={() => setTool((current) => ({ ...current, shape: "point" }))}
+              >
+                <PointIcon size={15} />
+                {t("tool.point")}
+                <kbd>V</kbd>
+              </button>
+              <button
+                type="button"
+                className={tool.shape === "box" ? "active" : ""}
+                aria-pressed={tool.shape === "box"}
+                title="B"
+                onClick={() => setTool((current) => ({ ...current, shape: "box" }))}
+              >
+                <BoxIcon size={15} />
+                {t("tool.box")}
+                <kbd>B</kbd>
+              </button>
+            </div>
+          </div>
+
+          <div className="stage-meta">
+            <span className="chip brand mono" title={currentDetail ? undefined : t("editor.loading")}>
+              {t("editor.revision", { ordinal: revision.ordinal })}
+            </span>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={t("editor.undo")}
+              title={t("editor.undoHint")}
+              disabled={!parentId || mutating}
+              onClick={undo}
+            >
+              <UndoIcon />
             </button>
           </div>
         </div>
-        <PromptOverlay videoRef={playerRef} currentTimeUs={currentTimeUs} onPrompt={savePrompt}>
-          <video
-            ref={playerRef}
-            controls
-            preload="metadata"
-            src={proxyUrl(video.id)}
-            onTimeUpdate={(event) =>
-              setCurrentTimeUs(Math.round(event.currentTarget.currentTime * 1_000_000))
-            }
-          />
-        </PromptOverlay>
-      </section>
 
-      <section className="panel" aria-labelledby="timeline-title">
-        <h3 id="timeline-title">Detection timeline</h3>
+        <div className={`viewer tool-${tool.polarity}`}>
+          {playerError ? (
+            <p className="viewer-empty">{t("player.unavailable")}</p>
+          ) : (
+            <>
+              <video
+                ref={playerRef}
+                src={proxyUrl(video.id)}
+                preload="auto"
+                muted={muted}
+                playsInline
+                onTimeUpdate={(event) => setCurrentTimeUs(Math.round(event.currentTarget.currentTime * 1_000_000))}
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => setPlaying(false)}
+                onError={() => setPlayerError(true)}
+              />
+              <PromptOverlay
+                videoRef={playerRef}
+                currentTimeUs={currentTimeUs}
+                prompts={prompts}
+                tool={tool}
+                ariaLabel={t("tool.overlay")}
+                onPrompt={savePrompt}
+                onInvalidBox={() => notify("info", t("tool.dragBox"))}
+              />
+            </>
+          )}
+          <div className="viewer-hint">
+            {tool.shape === "point" ? t("tool.hintPoint", { action }) : t("tool.hintBox", { action })}
+            <span className="muted"> · {t("tool.keys")}</span>
+          </div>
+        </div>
+
+        <PlayerControls
+          playing={playing}
+          muted={muted}
+          currentTimeUs={currentTimeUs}
+          durationUs={durationUs}
+          onTogglePlay={togglePlay}
+          onSeekBy={(delta) => seek(currentTimeUs + delta)}
+          onToggleMute={() => setMuted((value) => !value)}
+        />
+      </div>
+
+      <aside className="inspector">
+        <div className="tabs" role="tablist">
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              id={`tab-${item.id}`}
+              aria-selected={tab === item.id}
+              aria-controls={`panel-${item.id}`}
+              className={tab === item.id ? "active" : ""}
+              onClick={() => setTab(item.id)}
+            >
+              {t(item.label)}
+              {item.id === "corrections" && overrides.length > 0 && <span className="count">{overrides.length}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="inspector-body" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+          {tab === "corrections" && person && (
+            <CorrectionsPanel
+              detections={detections}
+              personId={person.id}
+              range={range}
+              currentTimeUs={currentTimeUs}
+              durationUs={durationUs}
+              overrides={overrides}
+              trackNumbers={trackNumbers}
+              saving={savingTracklet}
+              onRange={setRange}
+              onSeek={seek}
+              onDecide={(trackletId, decision) => void saveOverride(trackletId, decision)}
+            />
+          )}
+          {tab === "settings" && <SettingsPanel settings={revision.settings} onApply={applySettings} />}
+          {tab === "export" && (
+            <ExportPanel
+              videoId={video.id}
+              personLabel={personLabel}
+              revision={revision}
+              ordinals={ordinals}
+              jobs={jobs}
+              onStart={(kind) => onStartJob(revision, kind)}
+              onCancel={onCancelJob}
+            />
+          )}
+          {tab === "history" && detail && (
+            <HistoryPanel
+              history={detail.history}
+              currentId={revision.id}
+              busy={mutating}
+              onRestore={(id) => void restore(id)}
+            />
+          )}
+        </div>
+      </aside>
+
+      <section className="timeline-dock" aria-label={t("timeline.title")}>
         {timelineError && (
-          <p className="error-text" role="alert">
-            Could not load the timeline: {timelineError}
+          <p className="inline-error" role="alert">
+            {t("timeline.failed", { error: timelineError })}
           </p>
         )}
-        {detections === null && !timelineError && <p className="hint">Loading timeline…</p>}
-        {detections !== null && (
+        {detections === null && !timelineError && <p className="muted small">{t("timeline.loading")}</p>}
+        {detections !== null && person && (
           <TimelineStrip
             detections={detections}
             durationUs={durationUs}
             currentTimeUs={currentTimeUs}
             selectedPersonId={person.id}
             range={range}
+            overrides={overrides}
             onSeek={seek}
-            onRangeSelect={setRange}
+            onRangeSelect={(next) => {
+              setRange(next);
+              if (next) {
+                setTab("corrections");
+              }
+            }}
           />
-        )}
-        <p className="hint">Click the timeline to seek; drag to select a correction range.</p>
-      </section>
-
-      <div className="editor-columns">
-        <section className="panel corrections" aria-labelledby="corrections-title">
-          <h3 id="corrections-title">Identity corrections</h3>
-          {range === null ? (
-            <p className="hint">
-              Drag a time range on the timeline to list the tracklets active in it, then include or
-              exclude them from {person.display_label}.
-            </p>
-          ) : (
-            <>
-              <div className="range-head">
-                <span>
-                  Range {formatTime(range.startUs)} – {formatTime(range.endUs)}
-                </span>
-                <button type="button" className="btn ghost small" onClick={() => setRange(null)}>
-                  Clear range
-                </button>
-              </div>
-              {activities.length === 0 && (
-                <p className="empty-state">No detections in this range.</p>
-              )}
-              <ul className="tracklet-list">
-                {activities.map((activity) => (
-                  <li key={activity.trackletId} className="tracklet-row">
-                    <code title={activity.trackletId}>{activity.trackletId.slice(0, 8)}</code>
-                    <span className={`tracklet-kind kind-${activity.kind}`}>
-                      {activity.kind === "selected"
-                        ? "selected"
-                        : activity.kind === "ambiguous"
-                          ? "ambiguous"
-                          : "other"}
-                    </span>
-                    <span className="tracklet-count">
-                      {activity.count} {activity.count === 1 ? "detection" : "detections"}
-                    </span>
-                    <span className="tracklet-actions">
-                      <button
-                        type="button"
-                        className="btn primary small"
-                        disabled={savingTracklet !== null}
-                        onClick={() => void saveOverride(activity.trackletId, "include")}
-                      >
-                        Include
-                      </button>
-                      <button
-                        type="button"
-                        className="btn danger small"
-                        disabled={savingTracklet !== null}
-                        onClick={() => void saveOverride(activity.trackletId, "exclude")}
-                      >
-                        Exclude
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
-
-        <SettingsPanel settings={revision.settings} disabled={exportBusy} onApply={onApplySettings} />
-      </div>
-
-      <section className="panel export-section" ref={exportRef} aria-labelledby="export-title">
-        <h3 id="export-title">Export</h3>
-        <p className="hint">
-          Preview renders a short sample; processing renders the full video with only{" "}
-          {person.display_label} kept clear. Jobs run against revision r{revision.ordinal}.
-        </p>
-        <div className="actions-row">
-          <button
-            type="button"
-            className="btn ghost"
-            disabled={exportBusy}
-            onClick={() => void startJob("preview")}
-          >
-            {previewActive ? "Generating preview…" : "Generate preview"}
-          </button>
-          <button
-            type="button"
-            className="btn primary"
-            disabled={exportBusy}
-            onClick={() => void startJob("render")}
-          >
-            {renderActive ? "Processing video…" : "Process video"}
-          </button>
-        </div>
-        {previewTracked && (
-          <div className="job-progress" aria-live="polite">
-            <span className="job-label">Preview</span>
-            <ProgressBar value={previewTracked.job.progress} label={previewTracked.job.stage} />
-            {previewTracked.job.status === "failed" && (
-              <p className="error-text" role="alert">
-                {previewTracked.job.error_detail ?? "Preview failed."}
-              </p>
-            )}
-          </div>
-        )}
-        {renderTracked && (
-          <div className="job-progress" aria-live="polite">
-            <span className="job-label">Render</span>
-            <ProgressBar value={renderTracked.job.progress} label={renderTracked.job.stage} />
-            {renderTracked.job.status === "failed" && (
-              <p className="error-text" role="alert">
-                {renderTracked.job.error_detail ?? "Processing failed."}
-              </p>
-            )}
-          </div>
-        )}
-        {previewResult && (
-          <div className="result-block">
-            <h4>Preview result</h4>
-            {previewResult.revisionOrdinal !== revision.ordinal && (
-              <p className="hint">
-                Rendered from revision r{previewResult.revisionOrdinal}; current edits are revision
-                r{revision.ordinal}.
-              </p>
-            )}
-            <video
-              key={previewResult.artifactId}
-              className="result-video"
-              controls
-              src={artifactUrl(previewResult.artifactId)}
-            />
-          </div>
-        )}
-        {renderResult && (
-          <div className="result-block">
-            {renderResult.revisionOrdinal !== revision.ordinal && (
-              <p className="hint">
-                Rendered from revision r{renderResult.revisionOrdinal}; current edits are revision
-                r{revision.ordinal} — process again to include them.
-              </p>
-            )}
-            <a className="btn primary download-link" href={artifactUrl(renderResult.artifactId)}>
-              Download privacy-filtered video
-            </a>
-          </div>
         )}
       </section>
     </div>

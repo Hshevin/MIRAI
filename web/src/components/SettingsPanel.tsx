@@ -1,32 +1,52 @@
 import { useEffect, useState } from "react";
+import { useI18n } from "../i18n";
+import type { MessageKey } from "../i18n";
 import type { RenderSettings } from "../types";
-import { isUnsafeSettings } from "../types";
+import { DEFAULT_SETTINGS, isUnsafeSettings } from "../types";
+import { AlertIcon, InfoIcon } from "./Icons";
+
+type NumericKey = "mosaic_block" | "blur_sigma" | "mask_margin" | "edge_smoothing" | "mask_threshold";
 
 interface NumericField {
-  key: "mosaic_block" | "blur_sigma" | "mask_margin" | "edge_smoothing" | "mask_threshold";
-  label: string;
+  key: NumericKey;
+  label: MessageKey;
+  help: MessageKey;
   min: number;
   max: number;
   step: number;
   format: (value: number) => string;
 }
 
-const FIELDS: NumericField[] = [
-  { key: "mosaic_block", label: "Mosaic block", min: 4, max: 256, step: 1, format: (v) => `${Math.round(v)} px` },
-  { key: "blur_sigma", label: "Blur sigma", min: 0, max: 128, step: 0.5, format: (v) => v.toFixed(1) },
-  { key: "mask_margin", label: "Mask margin", min: -32, max: 32, step: 1, format: (v) => `${Math.round(v)} px` },
-  { key: "edge_smoothing", label: "Edge smoothing", min: 0, max: 32, step: 1, format: (v) => `${Math.round(v)} px` },
-  { key: "mask_threshold", label: "Mask threshold", min: 0.05, max: 0.99, step: 0.01, format: (v) => v.toFixed(2) },
+const GROUPS: { title: MessageKey; fields: NumericField[] }[] = [
+  {
+    title: "settings.groupEffect",
+    fields: [
+      { key: "mosaic_block", label: "settings.mosaic", help: "settings.mosaicHelp", min: 4, max: 256, step: 1, format: (v) => `${Math.round(v)} px` },
+      { key: "blur_sigma", label: "settings.blur", help: "settings.blurHelp", min: 0, max: 128, step: 0.5, format: (v) => v.toFixed(1) },
+    ],
+  },
+  {
+    title: "settings.groupMask",
+    fields: [
+      { key: "mask_margin", label: "settings.margin", help: "settings.marginHelp", min: -32, max: 32, step: 1, format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} px` },
+      { key: "edge_smoothing", label: "settings.smoothing", help: "settings.smoothingHelp", min: 0, max: 32, step: 1, format: (v) => `${Math.round(v)} px` },
+      { key: "mask_threshold", label: "settings.threshold", help: "settings.thresholdHelp", min: 0.05, max: 0.99, step: 0.01, format: (v) => v.toFixed(2) },
+    ],
+  },
 ];
 
 interface SettingsPanelProps {
-  /** Settings of the currently adopted revision (the applied snapshot). */
+  /** Settings of the current revision (the applied snapshot). */
   settings: RenderSettings;
-  disabled?: boolean;
   onApply: (settings: RenderSettings) => Promise<void>;
 }
 
-export function SettingsPanel({ settings, disabled, onApply }: SettingsPanelProps) {
+function sameSettings(a: RenderSettings, b: RenderSettings): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function SettingsPanel({ settings, onApply }: SettingsPanelProps) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<RenderSettings>(settings);
   const [applying, setApplying] = useState(false);
 
@@ -43,103 +63,117 @@ export function SettingsPanel({ settings, disabled, onApply }: SettingsPanelProp
     }
   }, [unsafe, draft.expert_acknowledged]);
 
-  function updateNumber(key: NumericField["key"], value: number) {
-    setDraft((current) => ({ ...current, [key]: value }));
-  }
-
-  const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
+  const dirty = !sameSettings(draft, settings);
   const expertValid = draft.privacy_mode === "expert" && draft.expert_acknowledged;
-  const canApply = dirty && !applying && !disabled && (!unsafe || expertValid);
+  const canApply = dirty && !applying && (!unsafe || expertValid);
 
   async function apply() {
     setApplying(true);
     try {
       await onApply(draft);
+    } catch {
+      // The caller reports the error; keep the draft so nothing is lost.
     } finally {
       setApplying(false);
     }
   }
 
   return (
-    <section className="panel settings-panel" aria-labelledby="settings-title">
-      <h3 id="settings-title">Render settings</h3>
-      <p className="hint">
-        Settings are immutable per revision. Applying changes creates a new selection revision for
-        the same person; prompts and overrides made earlier stay on the previous revision chain and
-        do not carry over.
-      </p>
-      <div className="settings-grid">
-        {FIELDS.map((field) => (
-          <label className="slider-row" key={field.key}>
-            <span className="slider-label">{field.label}</span>
-            <input
-              type="range"
-              min={field.min}
-              max={field.max}
-              step={field.step}
-              value={draft[field.key]}
-              disabled={disabled}
-              onChange={(event) => updateNumber(field.key, Number(event.target.value))}
-            />
-            <span className="slider-value">{field.format(draft[field.key])}</span>
-          </label>
-        ))}
-      </div>
-      <div className="privacy-mode" role="group" aria-label="Privacy mode">
-        <span className="slider-label">Privacy mode</span>
-        <div className="segmented">
+    <div className="settings">
+      {GROUPS.map((group) => (
+        <fieldset className="settings-group" key={group.title}>
+          <legend>{t(group.title)}</legend>
+          {group.fields.map((field) => {
+            const value = draft[field.key];
+            const changed = value !== settings[field.key];
+            return (
+              <label className="slider" key={field.key}>
+                <span className="slider-head">
+                  <span className="slider-label">
+                    {t(field.label)}
+                    {changed && <span className="dot-changed" aria-hidden="true" />}
+                  </span>
+                  <span className="slider-value mono">{field.format(value)}</span>
+                </span>
+                <input
+                  type="range"
+                  min={field.min}
+                  max={field.max}
+                  step={field.step}
+                  value={value}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, [field.key]: Number(event.target.value) }))
+                  }
+                />
+                <span className="slider-help">{t(field.help)}</span>
+              </label>
+            );
+          })}
+        </fieldset>
+      ))}
+
+      <fieldset className="settings-group">
+        <legend>{t("settings.mode")}</legend>
+        <div className="segmented" role="group" aria-label={t("settings.mode")}>
+          {(["safe", "expert"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={draft.privacy_mode === mode ? "active" : ""}
+              aria-pressed={draft.privacy_mode === mode}
+              onClick={() => setDraft((current) => ({ ...current, privacy_mode: mode }))}
+            >
+              {t(mode === "safe" ? "settings.safe" : "settings.expert")}
+            </button>
+          ))}
+        </div>
+        {unsafe && (
+          <div className="callout warn" role="alert">
+            <AlertIcon />
+            <div>
+              <p>{t("settings.warning")}</p>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={draft.expert_acknowledged}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      expert_acknowledged: event.target.checked,
+                      privacy_mode: event.target.checked ? "expert" : current.privacy_mode,
+                    }))
+                  }
+                />
+                {t("settings.ack")}
+              </label>
+              {!expertValid && <p className="small">{t("settings.needExpert")}</p>}
+            </div>
+          </div>
+        )}
+      </fieldset>
+
+      <div className="sticky-actions">
+        <p className="note">
+          <InfoIcon size={14} />
+          {dirty ? t("settings.dirty") : t("settings.note")}
+        </p>
+        <div className="actions">
           <button
             type="button"
-            className={draft.privacy_mode === "safe" ? "active" : ""}
-            aria-pressed={draft.privacy_mode === "safe"}
-            disabled={disabled}
-            onClick={() => setDraft((current) => ({ ...current, privacy_mode: "safe" }))}
+            className="btn ghost small"
+            disabled={sameSettings(draft, { ...DEFAULT_SETTINGS })}
+            onClick={() => setDraft({ ...DEFAULT_SETTINGS })}
           >
-            Safe
+            {t("settings.defaults")}
           </button>
-          <button
-            type="button"
-            className={draft.privacy_mode === "expert" ? "active" : ""}
-            aria-pressed={draft.privacy_mode === "expert"}
-            disabled={disabled}
-            onClick={() => setDraft((current) => ({ ...current, privacy_mode: "expert" }))}
-          >
-            Expert
+          <button type="button" className="btn ghost small" disabled={!dirty} onClick={() => setDraft(settings)}>
+            {t("settings.reset")}
+          </button>
+          <button type="button" className="btn primary small" disabled={!canApply} onClick={() => void apply()}>
+            {applying ? t("settings.applying") : t("settings.apply")}
           </button>
         </div>
       </div>
-      {unsafe && (
-        <div className="expert-warning" role="alert">
-          <p>
-            Mask expansion (margin &gt; 0) or a lower threshold (&lt; 0.70) exposes more pixels and
-            reduces privacy protection.
-          </p>
-          <label className="acknowledge">
-            <input
-              type="checkbox"
-              checked={draft.expert_acknowledged}
-              disabled={disabled}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  expert_acknowledged: event.target.checked,
-                  privacy_mode: event.target.checked ? "expert" : current.privacy_mode,
-                }))
-              }
-            />
-            I understand and accept the reduced privacy protection.
-          </label>
-          {draft.privacy_mode !== "expert" && (
-            <p className="hint">Switch to expert mode and tick the acknowledgement to apply these settings.</p>
-          )}
-        </div>
-      )}
-      <div className="settings-actions">
-        <button type="button" className="btn primary" disabled={!canApply} onClick={() => void apply()}>
-          {applying ? "Applying…" : "Apply as new revision"}
-        </button>
-        {dirty && !applying && <span className="hint">Unapplied changes</span>}
-      </div>
-    </section>
+    </div>
   );
 }

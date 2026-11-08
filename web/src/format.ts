@@ -31,3 +31,14 @@ export function formatPercent(fraction: number | null | undefined): string {
   const clamped = Math.min(1, Math.max(0, fraction));
   return `${Math.round(clamped * 100)}%`;
 }
+
+/** Microseconds → m:ss.t with tenths, for frame-accurate editor readouts. */
+export function formatTimePrecise(microseconds: number | null | undefined): string {
+  if (microseconds == null || !Number.isFinite(microseconds) || microseconds < 0) {
+    return "0:00.0";
+  }
+  const tenths = Math.floor(microseconds / 100_000);
+  const minutes = Math.floor(tenths / 600);
+  const seconds = Math.floor((tenths % 600) / 10);
+  return `${minutes}:${String(seconds).padStart(2, "0")}.${tenths % 10}`;
+}

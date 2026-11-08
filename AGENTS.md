@@ -42,7 +42,7 @@ The local MVP uses a two-pass pipeline. Pass 1 caches media timestamps, detectio
 - `src/figure_detection/pipeline`: analysis, identity, preview, and render orchestration.
 - `src/figure_detection/storage`: database and artifact persistence.
 - `src/figure_detection/worker`: job leasing, progress, cancellation, and checkpoints.
-- `web`: browser UI.
+- `web`: browser UI. `web/src/i18n.tsx` holds typed zh/en dictionaries (every key must exist in both); `web/src/styles.css` defines the design tokens.
 - `configs`: versioned model/tracker/privacy/export defaults.
 - `tests`: unit, integration, CV-quality, and end-to-end tests.
 - `var`: runtime database, uploads, proxies, caches, previews, and outputs; never commit.
@@ -107,4 +107,6 @@ Milestones 0–2 and the functional render slice are complete: revisioned select
 - 2026-08-20: The browser workflow uses separate Upload, Current Video, and Queue views with persistent navigation; changing views never cancels background jobs.
 - 2026-08-21: The project is branded MIRAI (Masked Identity Rendering And Isolation); the package, CLI, and environment variable names are unchanged.
 - 2026-08-21: Canonical remote is GitHub `Hshevin/MIRAI` over SSH; see "Remote repository".
+- 2026-11-09: The UI is a four-step flow (Upload → Analyze → Choose person → Edit & export). Upload starts on file choice and queues analysis automatically; the editor is a full-height workspace (video + custom controls, inspector tabs for corrections/look/export/history, bottom timeline); jobs live in a drawer that never replaces the current view.
+- 2026-11-09: The UI is bilingual (zh/en, persisted in localStorage). Colour is semantic: `--clear` means pixels kept clear, `--masked` hidden, `--warn` uncertain, `--danger` errors/hide; `--brand` is for interaction only.
 - 2026-11-09: Settings edits chain from the current revision so they no longer discard corrections; revision detail, per-video revision listing, and job `revision_id` in the queue let the UI restore state after reload.

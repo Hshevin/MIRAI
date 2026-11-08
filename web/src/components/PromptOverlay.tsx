@@ -1,31 +1,25 @@
-import { useRef, useState } from "react";
-import type { MouseEvent, ReactNode, RefObject } from "react";
-import type { MaskPromptInput } from "../types";
-import { useToasts } from "./Toasts";
-import { errorMessage } from "../api";
+import { useEffect, useState } from "react";
+import type { CSSProperties, PointerEvent, RefObject } from "react";
+import type { MaskPromptInput, RevisionPrompt } from "../types";
 
-export type PromptMode = "point+" | "point-" | "box+" | "box-";
+export type PromptPolarity = "keep" | "hide";
+export type PromptShape = "point" | "box";
 
-const MODES: { id: PromptMode; label: string; hint: string }[] = [
-  { id: "point+", label: "+ Point", hint: "Click the person to keep." },
-  { id: "point-", label: "− Point", hint: "Click a region to hide." },
-  { id: "box+", label: "+ Box", hint: "Drag a box around the person to keep." },
-  { id: "box-", label: "− Box", hint: "Drag a box around a region to hide." },
-];
+export interface PromptTool {
+  polarity: PromptPolarity;
+  shape: PromptShape;
+}
 
 /** A click moves less than this many pixels; anything more is a drag (box). */
 const DRAG_THRESHOLD_PX = 6;
 /** Markers stay visible within ±0.5 s of their timestamp. */
 const MARKER_WINDOW_US = 500_000;
-/** Height reserved at the bottom so the native video controls stay clickable. */
-const CONTROLS_STRIP_PX = 44;
 
-interface LocalMarker {
-  id: number;
-  timestamp_us: number;
-  kind: "point" | "box";
-  positive: boolean;
-  coordinates: number[];
+interface Rect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 interface DragState {
@@ -35,202 +29,209 @@ interface DragState {
   startY: number;
   currentX: number;
   currentY: number;
+  positive: boolean;
+}
+
+interface PendingMarker {
+  kind: "point" | "box";
+  positive: boolean;
+  coordinates: number[];
 }
 
 interface PromptOverlayProps {
   videoRef: RefObject<HTMLVideoElement>;
   currentTimeUs: number;
+  prompts: RevisionPrompt[];
+  tool: PromptTool;
+  disabled?: boolean;
+  ariaLabel: string;
   onPrompt: (input: MaskPromptInput) => Promise<void>;
-  children: ReactNode;
+  onInvalidBox: () => void;
 }
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-export function PromptOverlay({ videoRef, currentTimeUs, onPrompt, children }: PromptOverlayProps) {
-  const { notify } = useToasts();
-  const [mode, setMode] = useState<PromptMode>("point+");
-  const [drag, setDrag] = useState<DragState | null>(null);
-  const [markers, setMarkers] = useState<LocalMarker[]>([]);
-  const [saving, setSaving] = useState(false);
-  const markerId = useRef(0);
+/** The rectangle the frame actually occupies inside an `object-fit: contain` video element. */
+function contentRect(video: HTMLVideoElement): Rect {
+  const boxWidth = video.clientWidth;
+  const boxHeight = video.clientHeight;
+  const naturalWidth = video.videoWidth || boxWidth;
+  const naturalHeight = video.videoHeight || boxHeight;
+  if (!boxWidth || !boxHeight || !naturalWidth || !naturalHeight) {
+    return { left: 0, top: 0, width: boxWidth, height: boxHeight };
+  }
+  const scale = Math.min(boxWidth / naturalWidth, boxHeight / naturalHeight);
+  const width = naturalWidth * scale;
+  const height = naturalHeight * scale;
+  return {
+    left: video.offsetLeft + (boxWidth - width) / 2,
+    top: video.offsetTop + (boxHeight - height) / 2,
+    width,
+    height,
+  };
+}
 
-  function toNormalized(clientX: number, clientY: number): [number, number] | null {
+function boxStyle(coordinates: number[]): CSSProperties {
+  const [x1, y1, x2, y2] = coordinates;
+  return {
+    left: `${Math.min(x1, x2) * 100}%`,
+    top: `${Math.min(y1, y2) * 100}%`,
+    width: `${Math.abs(x2 - x1) * 100}%`,
+    height: `${Math.abs(y2 - y1) * 100}%`,
+  };
+}
+
+function Marker({ kind, positive, coordinates, pending }: PendingMarker & { pending?: boolean }) {
+  const tone = `${positive ? "keep" : "hide"}${pending ? " pending" : ""}`;
+  if (kind === "point") {
+    return (
+      <span
+        className={`marker-dot ${tone}`}
+        style={{ left: `${coordinates[0] * 100}%`, top: `${coordinates[1] * 100}%` }}
+      >
+        {positive ? "+" : "−"}
+      </span>
+    );
+  }
+  return <span className={`marker-box ${tone}`} style={boxStyle(coordinates)} />;
+}
+
+export function PromptOverlay({
+  videoRef,
+  currentTimeUs,
+  prompts,
+  tool,
+  disabled,
+  ariaLabel,
+  onPrompt,
+  onInvalidBox,
+}: PromptOverlayProps) {
+  const [rect, setRect] = useState<Rect | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [pending, setPending] = useState<PendingMarker | null>(null);
+
+  useEffect(() => {
     const video = videoRef.current;
     if (!video) {
-      return null;
+      return;
     }
-    const bounds = video.getBoundingClientRect();
-    if (bounds.width === 0 || bounds.height === 0) {
-      return null;
-    }
+    const update = () => setRect(contentRect(video));
+    const observer = new ResizeObserver(update);
+    observer.observe(video);
+    video.addEventListener("loadedmetadata", update);
+    update();
+    return () => {
+      observer.disconnect();
+      video.removeEventListener("loadedmetadata", update);
+    };
+  }, [videoRef]);
+
+  function toNormalized(event: { clientX: number; clientY: number }, target: Element): [number, number] {
+    const bounds = target.getBoundingClientRect();
     return [
-      clamp01((clientX - bounds.left) / bounds.width),
-      clamp01((clientY - bounds.top) / bounds.height),
+      clamp01((event.clientX - bounds.left) / Math.max(1, bounds.width)),
+      clamp01((event.clientY - bounds.top) / Math.max(1, bounds.height)),
     ];
   }
 
-  function timestampUs(): number {
-    const video = videoRef.current;
-    return Math.round((video?.currentTime ?? 0) * 1_000_000);
-  }
-
-  async function sendPrompt(kind: "point" | "box", positive: boolean, coordinates: number[]) {
-    if (saving) {
-      return;
-    }
-    setSaving(true);
-    const input: MaskPromptInput = { timestamp_us: timestampUs(), kind, positive, coordinates };
+  async function send(marker: PendingMarker) {
+    setPending(marker);
+    const timestamp = Math.round((videoRef.current?.currentTime ?? 0) * 1_000_000);
     try {
-      await onPrompt(input);
-      markerId.current += 1;
-      setMarkers((items) => [...items, { id: markerId.current, ...input }]);
-    } catch (error) {
-      notify("error", `Could not save prompt: ${errorMessage(error)}`);
+      await onPrompt({ timestamp_us: timestamp, ...marker });
     } finally {
-      setSaving(false);
+      setPending(null);
     }
   }
 
-  function handleMouseDown(event: MouseEvent<HTMLDivElement>) {
-    if (event.button !== 0) {
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || disabled || pending) {
       return;
     }
-    const point = toNormalized(event.clientX, event.clientY);
-    if (!point) {
-      return;
-    }
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const [x, y] = toNormalized(event, event.currentTarget);
+    // Holding Alt temporarily inverts keep/hide.
+    const positive = (tool.polarity === "keep") !== event.altKey;
     setDrag({
       startClientX: event.clientX,
       startClientY: event.clientY,
-      startX: point[0],
-      startY: point[1],
-      currentX: point[0],
-      currentY: point[1],
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y,
+      positive,
     });
   }
 
-  function handleMouseMove(event: MouseEvent<HTMLDivElement>) {
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
     if (!drag) {
       return;
     }
-    const point = toNormalized(event.clientX, event.clientY);
-    if (!point) {
-      return;
-    }
-    setDrag({ ...drag, currentX: point[0], currentY: point[1] });
+    const [x, y] = toNormalized(event, event.currentTarget);
+    setDrag({ ...drag, currentX: x, currentY: y });
   }
 
-  function handleMouseUp(event: MouseEvent<HTMLDivElement>) {
+  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
     if (!drag) {
       return;
     }
-    const point = toNormalized(event.clientX, event.clientY);
-    const moved = Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY);
     const start = drag;
     setDrag(null);
-    if (!point) {
+    const [x, y] = toNormalized(event, event.currentTarget);
+    if (tool.shape === "point") {
+      void send({ kind: "point", positive: start.positive, coordinates: [x, y] });
       return;
     }
-    if (mode === "point+" || mode === "point-") {
-      void sendPrompt("point", mode === "point+", [point[0], point[1]]);
-      return;
-    }
+    const moved = Math.hypot(event.clientX - start.startClientX, event.clientY - start.startClientY);
     if (moved < DRAG_THRESHOLD_PX) {
-      notify("info", "Drag to draw a box, or switch to a point mode to click.");
+      onInvalidBox();
       return;
     }
-    const x1 = Math.min(start.startX, point[0]);
-    const y1 = Math.min(start.startY, point[1]);
-    const x2 = Math.max(start.startX, point[0]);
-    const y2 = Math.max(start.startY, point[1]);
-    void sendPrompt("box", mode === "box+", [x1, y1, x2, y2]);
+    void send({
+      kind: "box",
+      positive: start.positive,
+      coordinates: [
+        Math.min(start.startX, x),
+        Math.min(start.startY, y),
+        Math.max(start.startX, x),
+        Math.max(start.startY, y),
+      ],
+    });
   }
 
-  function handleContextMenu(event: MouseEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const point = toNormalized(event.clientX, event.clientY);
-    if (point) {
-      void sendPrompt("point", false, [point[0], point[1]]);
-    }
+  if (!rect) {
+    return null;
   }
 
-  const activeHint = MODES.find((item) => item.id === mode)?.hint ?? "";
-  const visibleMarkers = markers.filter(
-    (marker) => Math.abs(marker.timestamp_us - currentTimeUs) <= MARKER_WINDOW_US,
+  const visible = prompts.filter(
+    (prompt) => Math.abs(prompt.timestamp_us - currentTimeUs) <= MARKER_WINDOW_US,
   );
 
   return (
-    <div className="prompt-editor">
-      <div className="prompt-toolbar" role="group" aria-label="Mask prompt mode">
-        {MODES.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`mode-btn ${mode === item.id ? "active" : ""}`}
-            aria-pressed={mode === item.id}
-            onClick={() => setMode(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-        <span className="prompt-hint">
-          {activeHint} Right-click always adds a negative point.
-        </span>
-      </div>
-      <div className="player-shell">
-        {children}
-        <div
-          className="prompt-capture"
-          style={{ bottom: CONTROLS_STRIP_PX }}
-          role="img"
-          aria-label="Mask prompt overlay. Click to add a point, drag to draw a box, right-click for a negative point. Use the video controls below to seek."
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={() => setDrag(null)}
-          onContextMenu={handleContextMenu}
+    <div
+      className={`prompt-layer shape-${tool.shape} ${disabled ? "disabled" : ""}`}
+      style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
+      role="application"
+      aria-label={ariaLabel}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={() => setDrag(null)}
+    >
+      {visible.map((prompt) => (
+        <Marker key={prompt.id} kind={prompt.kind} positive={prompt.positive} coordinates={prompt.coordinates} />
+      ))}
+      {pending && <Marker {...pending} pending />}
+      {drag && tool.shape === "box" && (
+        <Marker
+          kind="box"
+          positive={drag.positive}
+          coordinates={[drag.startX, drag.startY, drag.currentX, drag.currentY]}
+          pending
         />
-        <div className="prompt-layer" aria-hidden="true">
-          {visibleMarkers.map((marker) =>
-            marker.kind === "point" ? (
-              <span
-                key={marker.id}
-                className={`marker-dot ${marker.positive ? "positive" : "negative"}`}
-                style={{
-                  left: `${marker.coordinates[0] * 100}%`,
-                  top: `${marker.coordinates[1] * 100}%`,
-                }}
-              >
-                {marker.positive ? "+" : "−"}
-              </span>
-            ) : (
-              <span
-                key={marker.id}
-                className={`marker-box ${marker.positive ? "positive" : "negative"}`}
-                style={{
-                  left: `${Math.min(marker.coordinates[0], marker.coordinates[2]) * 100}%`,
-                  top: `${Math.min(marker.coordinates[1], marker.coordinates[3]) * 100}%`,
-                  width: `${Math.abs(marker.coordinates[2] - marker.coordinates[0]) * 100}%`,
-                  height: `${Math.abs(marker.coordinates[3] - marker.coordinates[1]) * 100}%`,
-                }}
-              />
-            ),
-          )}
-          {drag && (mode === "box+" || mode === "box-") && (
-            <span
-              className={`marker-box draft ${mode === "box+" ? "positive" : "negative"}`}
-              style={{
-                left: `${Math.min(drag.startX, drag.currentX) * 100}%`,
-                top: `${Math.min(drag.startY, drag.currentY) * 100}%`,
-                width: `${Math.abs(drag.currentX - drag.startX) * 100}%`,
-                height: `${Math.abs(drag.currentY - drag.startY) * 100}%`,
-              }}
-            />
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

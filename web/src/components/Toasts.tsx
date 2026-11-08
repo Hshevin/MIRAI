@@ -1,4 +1,6 @@
 import { createContext, useContext } from "react";
+import { useI18n } from "../i18n";
+import { AlertIcon, CheckIcon, CloseIcon, InfoIcon } from "./Icons";
 
 export type ToastKind = "info" | "success" | "error";
 
@@ -22,11 +24,11 @@ export function useToasts(): ToastApi {
   return useContext(ToastContext);
 }
 
-const TOAST_ICONS: Record<ToastKind, string> = {
-  info: "ℹ",
-  success: "✓",
-  error: "✕",
-};
+const TOAST_ICONS = {
+  info: InfoIcon,
+  success: CheckIcon,
+  error: AlertIcon,
+} as const;
 
 export function ToastViewport({
   toasts,
@@ -35,28 +37,30 @@ export function ToastViewport({
   toasts: Toast[];
   onDismiss: (id: number) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="toast-viewport" aria-live="polite">
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className={`toast toast-${toast.kind}`}
-          role={toast.kind === "error" ? "alert" : "status"}
-        >
-          <span className="toast-icon" aria-hidden="true">
-            {TOAST_ICONS[toast.kind]}
-          </span>
-          <span className="toast-message">{toast.message}</span>
-          <button
-            type="button"
-            className="toast-close"
-            aria-label="Dismiss notification"
-            onClick={() => onDismiss(toast.id)}
+      {toasts.map((toast) => {
+        const ToastIcon = TOAST_ICONS[toast.kind];
+        return (
+          <div
+            key={toast.id}
+            className={`toast toast-${toast.kind}`}
+            role={toast.kind === "error" ? "alert" : "status"}
           >
-            ×
-          </button>
-        </div>
-      ))}
+            <ToastIcon className="toast-icon" />
+            <span className="toast-message">{toast.message}</span>
+            <button
+              type="button"
+              className="icon-btn small"
+              aria-label={t("toast.dismiss")}
+              onClick={() => onDismiss(toast.id)}
+            >
+              <CloseIcon size={14} />
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

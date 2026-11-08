@@ -1,134 +1,124 @@
-import { useEffect, useRef, useState } from "react";
-import { createAnalysisJob, errorMessage, getJob, getPeople } from "../api";
 import { formatBytes, formatPercent, formatTime } from "../format";
-import { isActiveJob, isTerminalJob } from "../types";
-import type { Job, Person, QueueJob, Video } from "../types";
+import { stageLabel, useI18n } from "../i18n";
+import type { MessageKey } from "../i18n";
+import { isActiveJob } from "../types";
+import type { QueueJob, Video } from "../types";
 import { ProgressBar } from "../components/ProgressBar";
+import { AlertIcon, CheckIcon, FilmIcon, RefreshIcon } from "../components/Icons";
 
 interface AnalyzeViewProps {
   video: Video;
-  jobs: QueueJob[];
-  onComplete: (people: Person[]) => void;
+  /** Most recent analysis job for this video, if any. */
+  job: QueueJob | null;
+  onStart: () => void;
+  onNewVideo: () => void;
 }
 
-function MetaItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="meta-item">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
-}
+/** Progress thresholds reported by the analysis pipeline for each phase. */
+const PHASES: { id: string; label: MessageKey; until: number }[] = [
+  { id: "proxy", label: "stage.proxy", until: 0.01 },
+  { id: "detect_track", label: "stage.detect_track", until: 0.84 },
+  { id: "group", label: "analyze.stage.group", until: 1 },
+];
 
-export function AnalyzeView({ video, jobs, onComplete }: AnalyzeViewProps) {
-  const [job, setJob] = useState<Job | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
-
-  // Resume tracking an analysis job that is already active for this video
-  // (e.g. after a page reload).
-  useEffect(() => {
-    if (job) {
-      return;
-    }
-    const active = jobs.find(
-      (item) => item.video_id === video.id && item.kind === "analysis" && isActiveJob(item),
-    );
-    if (active) {
-      setJob(active);
-    }
-  }, [jobs, job, video.id]);
-
-  useEffect(() => {
-    if (!job || isTerminalJob(job)) {
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setInterval(() => {
-      void (async () => {
-        try {
-          const next = await getJob(job.id);
-          if (cancelled) {
-            return;
-          }
-          setJob(next);
-          if (next.status === "succeeded") {
-            const people = await getPeople(video.id);
-            if (!cancelled) {
-              onCompleteRef.current(people);
-            }
-          }
-        } catch (cause) {
-          if (!cancelled) {
-            setError(errorMessage(cause));
-          }
-        }
-      })();
-    }, 1000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [job, video.id]);
-
-  async function startAnalysis() {
-    setError(null);
-    try {
-      setJob(await createAnalysisJob(video.id));
-    } catch (cause) {
-      setError(errorMessage(cause));
-    }
-  }
-
+export function AnalyzeView({ video, job, onStart, onNewVideo }: AnalyzeViewProps) {
+  const { t } = useI18n();
   const running = job !== null && isActiveJob(job);
-  const failed = job !== null && job.status === "failed";
+  const failed = job?.status === "failed";
+  const cancelled = job?.status === "cancelled";
+  const succeeded = job?.status === "succeeded";
+  const progress = job?.progress ?? 0;
+  const started = running && job.stage !== "queued";
+
+  const meta: [MessageKey, string][] = [
+    [
+      "analyze.meta.resolution",
+      video.width !== null && video.height !== null ? `${video.width}×${video.height}` : "—",
+    ],
+    ["analyze.meta.duration", formatTime(video.duration_us)],
+    ["analyze.meta.size", formatBytes(video.size_bytes)],
+    ["analyze.meta.codec", video.video_codec ?? "—"],
+    ["analyze.meta.audio", video.has_audio ? (video.audio_codec ?? "✓") : t("analyze.meta.noAudio")],
+  ];
 
   return (
-    <section className="panel" aria-labelledby="analyze-title">
-      <h2 id="analyze-title">Analyze people</h2>
-      <dl className="meta-grid" aria-label="Video metadata">
-        <MetaItem label="File" value={video.original_name} />
-        <MetaItem
-          label="Resolution"
-          value={video.width !== null && video.height !== null ? `${video.width}×${video.height}` : "—"}
-        />
-        <MetaItem label="Duration" value={formatTime(video.duration_us)} />
-        <MetaItem label="Size" value={formatBytes(video.size_bytes)} />
-        <MetaItem label="Video codec" value={video.video_codec ?? "—"} />
-        <MetaItem label="Audio" value={video.has_audio ? `${video.audio_codec ?? "yes"} (preserved, not anonymized)` : "none"} />
-      </dl>
+    <section className="page page-narrow" aria-labelledby="analyze-title">
+      <header className="page-head">
+        <h1 id="analyze-title">{t("analyze.title")}</h1>
+        <p className="lead">{t("analyze.lead")}</p>
+      </header>
 
-      {!job && (
-        <div className="actions-row">
-          <button type="button" className="btn primary" onClick={() => void startAnalysis()}>
-            Analyze people
+      <div className="card">
+        <div className="file-row">
+          <span className="file-icon">
+            <FilmIcon size={20} />
+          </span>
+          <strong className="file-name" title={video.original_name}>
+            {video.original_name}
+          </strong>
+          <button type="button" className="btn subtle small" onClick={onNewVideo}>
+            {t("analyze.newVideo")}
           </button>
         </div>
-      )}
+        <dl className="meta-row">
+          {meta.map(([key, value]) => (
+            <div key={key}>
+              <dt>{t(key)}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
 
-      {running && job && (
-        <div className="job-progress" aria-live="polite">
-          <ProgressBar value={job.progress} label={`${job.stage} — ${formatPercent(job.progress)}`} />
-          <p className="hint">Analysis runs on the local worker; you can leave this view and come back.</p>
-        </div>
-      )}
+      <div className="card analyze-card" aria-live="polite">
+        {(running || succeeded) && (
+          <>
+            <ProgressBar
+              value={progress}
+              label={started ? stageLabel(t, job.stage) : succeeded ? t("analyze.done") : t("analyze.waiting")}
+              detail={formatPercent(progress)}
+            />
+            <ol className="phase-list">
+              {PHASES.map((phase, index) => {
+                const previousUntil = index === 0 ? 0 : PHASES[index - 1].until;
+                const state = succeeded || progress >= phase.until
+                  ? "done"
+                  : started && progress >= previousUntil
+                    ? "current"
+                    : "upcoming";
+                return (
+                  <li key={phase.id} className={`phase ${state}`}>
+                    <span className="phase-mark" aria-hidden="true">
+                      {state === "done" ? <CheckIcon size={12} /> : index + 1}
+                    </span>
+                    {t(phase.label)}
+                  </li>
+                );
+              })}
+            </ol>
+          </>
+        )}
 
-      {failed && job && (
-        <div className="failure-card" role="alert">
-          <h3>Analysis failed</h3>
-          <p className="error-text">{job.error_detail ?? "Unknown error"}</p>
-          <button type="button" className="btn primary" onClick={() => void startAnalysis()}>
-            Retry analysis
-          </button>
-        </div>
-      )}
+        {failed && (
+          <div className="callout danger" role="alert">
+            <AlertIcon />
+            <div>
+              <strong>{t("analyze.failed")}</strong>
+              <p>{job.error_detail ?? t("common.unknownError")}</p>
+            </div>
+          </div>
+        )}
+        {cancelled && <p className="muted">{t("analyze.cancelled")}</p>}
 
-      {error && (
-        <p className="error-text" role="alert">
-          {error}
-        </p>
-      )}
+        {(!job || failed || cancelled) && (
+          <div className="actions">
+            <button type="button" className="btn primary" onClick={onStart}>
+              {job ? <RefreshIcon /> : null}
+              {job ? t("analyze.retry") : t("analyze.start")}
+            </button>
+          </div>
+        )}
+      </div>
     </section>
   );
 }

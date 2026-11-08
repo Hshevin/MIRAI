@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatPercent, formatTime } from "./format";
+import { formatBytes, formatPercent, formatTime, formatTimePrecise } from "./format";
 import {
   CELL_AMBIGUOUS,
   CELL_EMPTY,
@@ -7,6 +7,8 @@ import {
   CELL_SELECTED,
   buildTimelineModel,
   classifyDetection,
+  effectiveVisibility,
+  trackletNumbers,
   trackletsInRange,
 } from "./timeline";
 import type { Detection } from "./types";
@@ -169,5 +171,50 @@ describe("trackletsInRange", () => {
 
   it("returns an empty list for empty ranges", () => {
     expect(trackletsInRange(detections, 3_000_000, 4_000_000, "p1")).toEqual([]);
+  });
+});
+
+describe("formatTimePrecise", () => {
+  it("includes tenths of a second", () => {
+    expect(formatTimePrecise(0)).toBe("0:00.0");
+    expect(formatTimePrecise(61_250_000)).toBe("1:01.2");
+  });
+
+  it("is defensive about invalid input", () => {
+    expect(formatTimePrecise(null)).toBe("0:00.0");
+    expect(formatTimePrecise(-5)).toBe("0:00.0");
+  });
+});
+
+describe("trackletNumbers", () => {
+  it("numbers tracklets by first appearance", () => {
+    const numbers = trackletNumbers([
+      detection({ tracklet_id: "late", timestamp_us: 5_000_000 }),
+      detection({ tracklet_id: "early", timestamp_us: 1_000_000 }),
+      detection({ tracklet_id: "late", timestamp_us: 4_000_000 }),
+    ]);
+    expect(numbers.get("early")).toBe(1);
+    expect(numbers.get("late")).toBe(2);
+  });
+});
+
+describe("effectiveVisibility", () => {
+  const include = { tracklet_id: "a", start_us: 0, end_us: 1_000_000, decision: "include" as const };
+  const exclude = { tracklet_id: "a", start_us: 500_000, end_us: 2_000_000, decision: "exclude" as const };
+
+  it("defaults to visible only for the kept person", () => {
+    expect(effectiveVisibility("selected", "a", [], 0, 1)).toBe(true);
+    expect(effectiveVisibility("ambiguous", "a", [], 0, 1)).toBe(false);
+    expect(effectiveVisibility("other", "a", [], 0, 1)).toBe(false);
+  });
+
+  it("applies overlapping overrides with the last one winning", () => {
+    expect(effectiveVisibility("other", "a", [include], 0, 400_000)).toBe(true);
+    expect(effectiveVisibility("other", "a", [include, exclude], 600_000, 700_000)).toBe(false);
+  });
+
+  it("ignores overrides for other tracklets or outside the range", () => {
+    expect(effectiveVisibility("other", "b", [include], 0, 400_000)).toBe(false);
+    expect(effectiveVisibility("other", "a", [include], 3_000_000, 4_000_000)).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import type {
   QueueJob,
   RenderSettings,
   Revision,
+  RevisionDetail,
   RevisionEditResponse,
   Video,
 } from "./types";
@@ -82,9 +83,12 @@ export function getHealth(): Promise<Health> {
 export function uploadVideo(
   file: File,
   onProgress: (loaded: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<Video> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    signal?.addEventListener("abort", () => xhr.abort());
+    xhr.onabort = () => reject(new ApiError("Upload cancelled", 0));
     xhr.open("POST", `${API_BASE}/videos`);
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && event.total > 0) {
@@ -150,6 +154,22 @@ export function createSelection(
     person_id: personId,
     settings,
   });
+}
+
+export function listRevisions(videoId: string): Promise<Revision[]> {
+  return request<Revision[]>(`/videos/${videoId}/selection-revisions`);
+}
+
+export function getRevisionDetail(revisionId: string): Promise<RevisionDetail> {
+  return request<RevisionDetail>(`/selection-revisions/${revisionId}`);
+}
+
+/** Derives a child revision with new settings; earlier corrections stay in effect. */
+export function updateRevisionSettings(
+  revisionId: string,
+  settings: RenderSettings,
+): Promise<Revision> {
+  return post<Revision>(`/selection-revisions/${revisionId}/settings`, settings);
 }
 
 export function addMaskPrompt(

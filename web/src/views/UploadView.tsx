@@ -2,111 +2,146 @@ import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { errorMessage, uploadVideo } from "../api";
 import { formatBytes } from "../format";
+import { useI18n } from "../i18n";
 import { ProgressBar } from "../components/ProgressBar";
+import { ArrowRightIcon, CpuIcon, MusicIcon, ShieldIcon, UploadIcon } from "../components/Icons";
 import type { Video } from "../types";
 
 interface UploadViewProps {
+  currentVideo: Video | null;
   onUploaded: (video: Video) => void;
+  onResume: () => void;
 }
 
-export function UploadView({ onUploaded }: UploadViewProps) {
+export function UploadView({ currentVideo, onUploaded, onResume }: UploadViewProps) {
+  const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<File | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState<number | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  function choose(next: File | null) {
-    setFile(next);
-    setError(null);
-    setProgress(null);
-  }
-
-  function handleInput(event: ChangeEvent<HTMLInputElement>) {
-    choose(event.target.files?.[0] ?? null);
-  }
-
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setDragActive(false);
-    choose(event.dataTransfer.files?.[0] ?? null);
-  }
-
-  async function startUpload() {
-    if (!file || uploading) {
+  // Choosing a file starts the upload immediately; there is no separate confirm step.
+  async function start(next: File | null) {
+    if (!next || file) {
       return;
     }
-    setUploading(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setFile(next);
     setError(null);
     setProgress(0);
     try {
-      const video = await uploadVideo(file, (loaded, total) => setProgress(loaded / total));
+      const video = await uploadVideo(next, (loaded, total) => setProgress(loaded / total), controller.signal);
       onUploaded(video);
     } catch (cause) {
-      setError(errorMessage(cause));
-      setProgress(null);
+      setError(controller.signal.aborted ? t("upload.cancelled") : t("upload.failed", { error: errorMessage(cause) }));
     } finally {
-      setUploading(false);
+      abortRef.current = null;
+      setFile(null);
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
     }
   }
 
+  function handleInput(event: ChangeEvent<HTMLInputElement>) {
+    void start(event.target.files?.[0] ?? null);
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    setDragActive(false);
+    void start(event.dataTransfer.files?.[0] ?? null);
+  }
+
+  const uploading = file !== null;
+
   return (
-    <section className="panel upload-panel" aria-labelledby="upload-title">
-      <h2 id="upload-title">Upload a video</h2>
-      <p className="hint">
-        The video is analyzed locally to find every person. Recommended: 1080p, up to 30 minutes.
-      </p>
-      <div
-        className={`dropzone ${dragActive ? "dragging" : ""} ${file ? "has-file" : ""}`}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragActive(true);
-        }}
-        onDragLeave={() => setDragActive(false)}
-        onDrop={handleDrop}
-      >
-        {file ? (
-          <div className="file-info">
-            <strong>{file.name}</strong>
-            <span>{formatBytes(file.size)} · ready to upload</span>
+    <section className="page page-narrow" aria-labelledby="upload-title">
+      <header className="page-head center">
+        <h1 id="upload-title">{t("upload.title")}</h1>
+        <p className="lead">{t("upload.lead")}</p>
+      </header>
+
+      {uploading ? (
+        <div className="dropzone busy">
+          <UploadIcon size={28} className="dropzone-icon" />
+          <strong className="dropzone-title" title={file.name}>
+            {t("upload.uploading", { name: file.name })}
+          </strong>
+          <span className="muted small">{formatBytes(file.size)}</span>
+          <div className="dropzone-progress">
+            <ProgressBar value={progress} />
           </div>
-        ) : (
-          <div className="file-info">
-            <strong>Drop a video file here</strong>
-            <span>or pick one from your device</span>
-          </div>
-        )}
-        <input
-          ref={inputRef}
-          type="file"
-          accept="video/*"
-          className="visually-hidden"
-          aria-label="Choose video file"
-          onChange={handleInput}
-        />
-        <button
-          type="button"
-          className="btn ghost"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
+          <button type="button" className="btn subtle small" onClick={() => abortRef.current?.abort()}>
+            {t("upload.cancel")}
+          </button>
+        </div>
+      ) : (
+        <label
+          className={`dropzone ${dragActive ? "dragging" : ""}`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragActive(true);
+          }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={handleDrop}
         >
-          {file ? "Choose another video" : "Choose video"}
-        </button>
-      </div>
-      {progress !== null && (
-        <ProgressBar value={progress} label={`Uploading — ${Math.round(progress * 100)}%`} />
+          <input
+            ref={inputRef}
+            type="file"
+            accept="video/*"
+            className="visually-hidden"
+            onChange={handleInput}
+          />
+          <span className="dropzone-badge">
+            <UploadIcon size={26} />
+          </span>
+          <strong className="dropzone-title">{t("upload.drop")}</strong>
+          <span className="muted">{t("upload.or")}</span>
+          <span className="muted small">{t("upload.formats")}</span>
+        </label>
       )}
+
       {error && (
-        <p className="error-text" role="alert">
+        <p className="inline-error center" role="alert">
           {error}
         </p>
       )}
-      <div className="actions-row">
-        <button type="button" className="btn primary" disabled={!file || uploading} onClick={() => void startUpload()}>
-          {uploading ? "Uploading and inspecting…" : "Upload video"}
+
+      {currentVideo && !uploading && (
+        <button type="button" className="resume-card" onClick={onResume}>
+          <span className="muted small">{t("select.resumeTitle")}</span>
+          <strong>{t("upload.resume", { name: currentVideo.original_name })}</strong>
+          <ArrowRightIcon />
         </button>
-      </div>
+      )}
+
+      <ul className="facts">
+        <li>
+          <CpuIcon size={18} />
+          <div>
+            <strong>{t("upload.fact1Title")}</strong>
+            <span>{t("upload.fact1")}</span>
+          </div>
+        </li>
+        <li>
+          <ShieldIcon size={18} />
+          <div>
+            <strong>{t("upload.fact2Title")}</strong>
+            <span>{t("upload.fact2")}</span>
+          </div>
+        </li>
+        <li>
+          <MusicIcon size={18} />
+          <div>
+            <strong>{t("upload.fact3Title")}</strong>
+            <span>{t("upload.fact3")}</span>
+          </div>
+        </li>
+      </ul>
     </section>
   );
 }
