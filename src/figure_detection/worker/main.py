@@ -143,7 +143,7 @@ def process_job(job_id: str) -> None:
             job.stage = "failed"
             job.error_code = type(exc).__name__.upper()
             job.error_detail = str(exc)
-            if video:
+            if video and job.kind == JobKind.ANALYSIS:
                 video.state = VideoState.FAILED
                 video.error_code = job.error_code
                 video.error_detail = job.error_detail
