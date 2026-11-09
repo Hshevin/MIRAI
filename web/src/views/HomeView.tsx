@@ -80,7 +80,7 @@ export function HomeView({ onUploaded, onOpenVideo, onDeleted }: {
         <div className="projects-heading"><h2 id="projects-title">{t("home.projects")} · {data.total}</h2><span className="muted">{t("home.storageTotal", { size: formatBytes(data.storage_bytes_total) })}</span></div>
         <div className="project-tools">
           <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("home.search")} aria-label={t("home.search")} />
-          <select value={sort} aria-label={t("home.sort.activity")} onChange={(event) => setSort(event.target.value as ProjectSort)}>
+          <select value={sort} aria-label={t("home.sort.label")} onChange={(event) => setSort(event.target.value as ProjectSort)}>
             {(["activity", "name", "size"] as const).map((value) => <option key={value} value={value}>{t(`home.sort.${value}`)}</option>)}
           </select>
         </div>

@@ -10,6 +10,8 @@ interface AnalyzeViewProps {
   video: Video;
   /** Most recent analysis job for this video, if any. */
   job: QueueJob | null;
+  /** Analysis succeeded and its results are loaded, but no person was found. */
+  noPeople: boolean;
   onStart: () => void;
   onNewVideo: () => void;
 }
@@ -21,7 +23,7 @@ const PHASES: { id: string; label: MessageKey; until: number }[] = [
   { id: "group", label: "analyze.stage.group", until: 1 },
 ];
 
-export function AnalyzeView({ video, job, onStart, onNewVideo }: AnalyzeViewProps) {
+export function AnalyzeView({ video, job, noPeople, onStart, onNewVideo }: AnalyzeViewProps) {
   const { t } = useI18n();
   const running = job !== null && isActiveJob(job);
   const failed = job?.status === "failed";
@@ -71,7 +73,7 @@ export function AnalyzeView({ video, job, onStart, onNewVideo }: AnalyzeViewProp
       </div>
 
       <div className="card analyze-card" aria-live="polite">
-        {(running || succeeded) && (
+        {(running || (succeeded && !noPeople)) && (
           <>
             <ProgressBar
               value={progress}
@@ -109,8 +111,14 @@ export function AnalyzeView({ video, job, onStart, onNewVideo }: AnalyzeViewProp
           </div>
         )}
         {cancelled && <p className="muted">{t("analyze.cancelled")}</p>}
+        {noPeople && (
+          <div className="callout warn">
+            <AlertIcon />
+            <p>{t("select.empty")}</p>
+          </div>
+        )}
 
-        {(!job || failed || cancelled) && (
+        {(!job || failed || cancelled || noPeople) && (
           <div className="actions">
             <button type="button" className="btn primary" onClick={onStart}>
               {job ? <RefreshIcon /> : null}

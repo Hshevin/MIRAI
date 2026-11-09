@@ -116,6 +116,8 @@ function Shell() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [video, setVideo] = useState<Video | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
+  // Which video `people` belongs to, so "loaded, none found" differs from "not loaded yet".
+  const [peopleVideoId, setPeopleVideoId] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [revision, setRevision] = useState<Revision | null>(null);
   const [creating, setCreating] = useState(false);
@@ -226,6 +228,7 @@ function Shell() {
     const [found, existing] = await Promise.all([getPeople(videoId), listRevisions(videoId)]);
     if (generation === openingGeneration.current) {
       setPeople(found);
+      setPeopleVideoId(videoId);
       setRevisions(existing);
     }
     return { found, existing };
@@ -261,6 +264,7 @@ function Shell() {
     openingGeneration.current += 1;
     setVideo(null);
     setPeople([]);
+    setPeopleVideoId(null);
     setRevisions([]);
     setRevision(null);
     handledAnalysis.current = null;
@@ -482,6 +486,9 @@ function Shell() {
             <AnalyzeView
               video={video}
               job={analysisJob}
+              noPeople={
+                analysisJob?.status === "succeeded" && peopleVideoId === video.id && people.length === 0
+              }
               onStart={() => void startAnalysis(video)}
               onNewVideo={() => {
                 resetWorkflow();
