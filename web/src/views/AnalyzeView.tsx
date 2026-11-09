@@ -40,7 +40,10 @@ export function AnalyzeView({ video, job, noPeople, onStart, onNewVideo }: Analy
     ["analyze.meta.duration", formatTime(video.duration_us)],
     ["analyze.meta.size", formatBytes(video.size_bytes)],
     ["analyze.meta.codec", video.video_codec ?? "—"],
-    ["analyze.meta.audio", video.has_audio ? (video.audio_codec ?? "✓") : t("analyze.meta.noAudio")],
+    [
+      "analyze.meta.audio",
+      video.has_audio ? (video.audio_codec ?? "✓") : t("analyze.meta.noAudio"),
+    ],
   ];
 
   return (
@@ -77,17 +80,24 @@ export function AnalyzeView({ video, job, noPeople, onStart, onNewVideo }: Analy
           <>
             <ProgressBar
               value={progress}
-              label={started ? stageLabel(t, job.stage) : succeeded ? t("analyze.done") : t("analyze.waiting")}
+              label={
+                started
+                  ? stageLabel(t, job.stage)
+                  : succeeded
+                    ? t("analyze.done")
+                    : t("analyze.waiting")
+              }
               detail={formatPercent(progress)}
             />
             <ol className="phase-list">
               {PHASES.map((phase, index) => {
                 const previousUntil = index === 0 ? 0 : PHASES[index - 1].until;
-                const state = succeeded || progress >= phase.until
-                  ? "done"
-                  : started && progress >= previousUntil
-                    ? "current"
-                    : "upcoming";
+                const state =
+                  succeeded || progress >= phase.until
+                    ? "done"
+                    : started && progress >= previousUntil
+                      ? "current"
+                      : "upcoming";
                 return (
                   <li key={phase.id} className={`phase ${state}`}>
                     <span className="phase-mark" aria-hidden="true">

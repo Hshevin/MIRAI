@@ -35,7 +35,9 @@ function savedRevisions(): Record<string, string> {
     if (value && typeof value === "object" && !Array.isArray(value)) {
       return Object.fromEntries(Object.entries(value).filter(([, id]) => typeof id === "string"));
     }
-  } catch { /* Invalid saved data is discarded. */ }
+  } catch {
+    /* Invalid saved data is discarded. */
+  }
   return {};
 }
 
@@ -219,23 +221,32 @@ function Shell() {
       if (job.status === "succeeded") {
         notify("success", t("toast.jobDone", vars));
       } else if (job.status === "failed") {
-        notify("error", t("toast.jobFailed", { ...vars, error: job.error_detail ?? t("common.unknownError") }));
+        notify(
+          "error",
+          t("toast.jobFailed", { ...vars, error: job.error_detail ?? t("common.unknownError") }),
+        );
       }
     }
   }, [queue, notify, t]);
 
-  const loadSelectionData = useCallback(async (videoId: string, generation = openingGeneration.current) => {
-    const [found, existing] = await Promise.all([getPeople(videoId), listRevisions(videoId)]);
-    if (generation === openingGeneration.current) {
-      setPeople(found);
-      setPeopleVideoId(videoId);
-      setRevisions(existing);
-    }
-    return { found, existing };
-  }, []);
+  const loadSelectionData = useCallback(
+    async (videoId: string, generation = openingGeneration.current) => {
+      const [found, existing] = await Promise.all([getPeople(videoId), listRevisions(videoId)]);
+      if (generation === openingGeneration.current) {
+        setPeople(found);
+        setPeopleVideoId(videoId);
+        setRevisions(existing);
+      }
+      return { found, existing };
+    },
+    [],
+  );
 
   const analysisJob = useMemo(
-    () => (video ? (queue.find((job) => job.video_id === video.id && job.kind === "analysis") ?? null) : null),
+    () =>
+      video
+        ? (queue.find((job) => job.video_id === video.id && job.kind === "analysis") ?? null)
+        : null,
     [queue, video],
   );
 
@@ -250,13 +261,18 @@ function Shell() {
     handledAnalysis.current = analysisJob.id;
     const generation = openingGeneration.current;
     void loadSelectionData(video.id, generation)
-      .then(({ found }) => { if (generation === openingGeneration.current && found.length) setStep("select"); })
+      .then(({ found }) => {
+        if (generation === openingGeneration.current && found.length) setStep("select");
+      })
       .catch((cause) => notify("error", t("toast.loadFailed", { error: errorMessage(cause) })));
   }, [analysisJob, step, video, loadSelectionData, notify, t]);
 
   const adoptRevision = useCallback((next: Revision) => {
     setRevision(next);
-    window.localStorage.setItem(REVISION_KEY, JSON.stringify({ ...savedRevisions(), [next.video_id]: next.id }));
+    window.localStorage.setItem(
+      REVISION_KEY,
+      JSON.stringify({ ...savedRevisions(), [next.video_id]: next.id }),
+    );
     setRevisions((items) => (items.some((item) => item.id === next.id) ? items : [next, ...items]));
   }, []);
 
@@ -271,52 +287,67 @@ function Shell() {
     window.localStorage.removeItem(VIDEO_KEY);
   }, []);
 
-  const openVideo = useCallback(async (videoId: string) => {
-    const mapping = savedRevisions();
-    const legacy = window.localStorage.getItem(LEGACY_REVISION_KEY);
-    const legacyVideo = window.localStorage.getItem(VIDEO_KEY);
-    if (legacy && legacyVideo) {
-      mapping[legacyVideo] ??= legacy;
-      window.localStorage.setItem(REVISION_KEY, JSON.stringify(mapping));
-    }
-    window.localStorage.removeItem(LEGACY_REVISION_KEY);
-    resetWorkflow();
-    setStep("upload");
-    const generation = openingGeneration.current;
-    const current = () => generation === openingGeneration.current;
-    try {
-      const restored = await getVideo(videoId);
-      const [{ found, existing }, jobs] = await Promise.all([loadSelectionData(videoId, generation), listJobs()]);
-      if (!current()) return;
-      setVideo(restored);
-      setQueue(jobs);
-      window.localStorage.setItem(VIDEO_KEY, videoId);
-      if (!found.length || jobs.some((job) => job.video_id === videoId && job.kind === "analysis" && isActiveJob(job))) {
-        setStep("analyze");
-        return;
+  const openVideo = useCallback(
+    async (videoId: string) => {
+      const mapping = savedRevisions();
+      const legacy = window.localStorage.getItem(LEGACY_REVISION_KEY);
+      const legacyVideo = window.localStorage.getItem(VIDEO_KEY);
+      if (legacy && legacyVideo) {
+        mapping[legacyVideo] ??= legacy;
+        window.localStorage.setItem(REVISION_KEY, JSON.stringify(mapping));
       }
-      const candidates = [...new Set([mapping[videoId], existing[0]?.id].filter((id): id is string => !!id))];
-      for (const id of candidates) {
-        try {
-          const detail = await getRevisionDetail(id);
-          if (!current()) return;
-          if (detail.revision.video_id === videoId) {
-            adoptRevision(detail.revision);
-            setStep("edit");
-            return;
-          }
-        } catch { /* A stale saved revision falls back to the newest revision. */ }
-      }
-      if (current()) setStep("select");
-    } catch {
-      if (!current()) return;
-      forgetVideo(videoId);
+      window.localStorage.removeItem(LEGACY_REVISION_KEY);
       resetWorkflow();
       setStep("upload");
-      setHomeVersion((value) => value + 1);
-      notify("error", t("project.missing"));
-    }
-  }, [adoptRevision, loadSelectionData, notify, resetWorkflow, t]);
+      const generation = openingGeneration.current;
+      const current = () => generation === openingGeneration.current;
+      try {
+        const restored = await getVideo(videoId);
+        const [{ found, existing }, jobs] = await Promise.all([
+          loadSelectionData(videoId, generation),
+          listJobs(),
+        ]);
+        if (!current()) return;
+        setVideo(restored);
+        setQueue(jobs);
+        window.localStorage.setItem(VIDEO_KEY, videoId);
+        if (
+          !found.length ||
+          jobs.some(
+            (job) => job.video_id === videoId && job.kind === "analysis" && isActiveJob(job),
+          )
+        ) {
+          setStep("analyze");
+          return;
+        }
+        const candidates = [
+          ...new Set([mapping[videoId], existing[0]?.id].filter((id): id is string => !!id)),
+        ];
+        for (const id of candidates) {
+          try {
+            const detail = await getRevisionDetail(id);
+            if (!current()) return;
+            if (detail.revision.video_id === videoId) {
+              adoptRevision(detail.revision);
+              setStep("edit");
+              return;
+            }
+          } catch {
+            /* A stale saved revision falls back to the newest revision. */
+          }
+        }
+        if (current()) setStep("select");
+      } catch {
+        if (!current()) return;
+        forgetVideo(videoId);
+        resetWorkflow();
+        setStep("upload");
+        setHomeVersion((value) => value + 1);
+        notify("error", t("project.missing"));
+      }
+    },
+    [adoptRevision, loadSelectionData, notify, resetWorkflow, t],
+  );
 
   useEffect(() => {
     if (resumed.current) return;
@@ -341,7 +372,10 @@ function Shell() {
       setQueue((items) =>
         items.some((item) => item.id === job.id)
           ? items
-          : [{ ...job, video_name: target.original_name, artifact_id: null, revision_id: null }, ...items],
+          : [
+              { ...job, video_name: target.original_name, artifact_id: null, revision_id: null },
+              ...items,
+            ],
       );
     } catch (cause) {
       notify("error", errorMessage(cause));
@@ -382,11 +416,22 @@ function Shell() {
       setQueue((items) =>
         items.some((item) => item.id === job.id)
           ? items
-          : [{ ...job, video_name: video?.original_name ?? "", artifact_id: null, revision_id: target.id }, ...items],
+          : [
+              {
+                ...job,
+                video_name: video?.original_name ?? "",
+                artifact_id: null,
+                revision_id: target.id,
+              },
+              ...items,
+            ],
       );
       notify("info", t("export.queued", { kind: kindLabel(t, kind) }));
     } catch (cause) {
-      notify("error", t("export.failedStart", { kind: kindLabel(t, kind), error: errorMessage(cause) }));
+      notify(
+        "error",
+        t("export.failedStart", { kind: kindLabel(t, kind), error: errorMessage(cause) }),
+      );
     }
   }
 
@@ -396,7 +441,12 @@ function Shell() {
       setQueue((items) =>
         items.map((item) =>
           item.id === updated.id
-            ? { ...item, status: updated.status, stage: updated.stage, cancel_requested: updated.cancel_requested }
+            ? {
+                ...item,
+                status: updated.status,
+                stage: updated.stage,
+                cancel_requested: updated.cancel_requested,
+              }
             : item,
         ),
       );
@@ -435,7 +485,8 @@ function Shell() {
           <nav aria-label="Workflow">
             <ol className="stepper">
               {STEPS.map((item, index) => {
-                const state = index < stepIndex ? "done" : index === stepIndex ? "current" : "upcoming";
+                const state =
+                  index < stepIndex ? "done" : index === stepIndex ? "current" : "upcoming";
                 return (
                   <li key={item.id} className={`step ${state}`}>
                     <button
@@ -480,14 +531,21 @@ function Shell() {
 
         <main className="main">
           {step === "upload" && (
-            <HomeView key={homeVersion} onUploaded={handleUploaded} onOpenVideo={openVideo} onDeleted={handleDeleted} />
+            <HomeView
+              key={homeVersion}
+              onUploaded={handleUploaded}
+              onOpenVideo={openVideo}
+              onDeleted={handleDeleted}
+            />
           )}
           {step === "analyze" && video && (
             <AnalyzeView
               video={video}
               job={analysisJob}
               noPeople={
-                analysisJob?.status === "succeeded" && peopleVideoId === video.id && people.length === 0
+                analysisJob?.status === "succeeded" &&
+                peopleVideoId === video.id &&
+                people.length === 0
               }
               onStart={() => void startAnalysis(video)}
               onNewVideo={() => {

@@ -112,7 +112,10 @@ function renderLanes(
   }
   ctx.scale(dpr, dpr);
   // Frame-to-frame spacing leaves empty columns; spans under ~0.25 s read as continuous.
-  const bridge = Math.max(1, Math.ceil((model.columns * BRIDGE_US) / Math.max(1, model.durationUs)));
+  const bridge = Math.max(
+    1,
+    Math.ceil((model.columns * BRIDGE_US) / Math.max(1, model.durationUs)),
+  );
   const colors: Record<number, string> = {
     [CELL_OTHER]: palette.other,
     [CELL_SELECTED]: palette.selected,
@@ -122,7 +125,12 @@ function renderLanes(
     const y = laneY(geometry, laneIndex);
     if (laneIndex % 2 === 0) {
       ctx.fillStyle = palette.stripe;
-      ctx.fillRect(GUTTER_PX, y - geometry.laneGap / 2, model.columns, geometry.laneHeight + geometry.laneGap);
+      ctx.fillRect(
+        GUTTER_PX,
+        y - geometry.laneGap / 2,
+        model.columns,
+        geometry.laneHeight + geometry.laneGap,
+      );
     }
     if (geometry.laneHeight >= 8) {
       ctx.fillStyle = palette.fgFaint;
@@ -140,7 +148,13 @@ function renderLanes(
         if (runValue > 0) {
           ctx.fillStyle = colors[runValue];
           ctx.beginPath();
-          ctx.roundRect(GUTTER_PX + runStart, y, Math.max(1, column - runStart), geometry.laneHeight, Math.min(3, geometry.laneHeight / 2));
+          ctx.roundRect(
+            GUTTER_PX + runStart,
+            y,
+            Math.max(1, column - runStart),
+            geometry.laneHeight,
+            Math.min(3, geometry.laneHeight / 2),
+          );
           ctx.fill();
         }
         runValue = value;
@@ -218,7 +232,9 @@ export function TimelineStrip({
   );
 
   function usToX(us: number): number {
-    return durationUs > 0 ? GUTTER_PX + Math.min(1, Math.max(0, us / durationUs)) * timeWidth : GUTTER_PX;
+    return durationUs > 0
+      ? GUTTER_PX + Math.min(1, Math.max(0, us / durationUs)) * timeWidth
+      : GUTTER_PX;
   }
 
   function xToUs(x: number): number {
@@ -250,7 +266,8 @@ export function TimelineStrip({
     ctx.fillRect(GUTTER_PX, RULER_PX - 1, timeWidth, 1);
     if (durationUs > 0) {
       const durationS = durationUs / 1_000_000;
-      const step = TICK_STEPS_S.find((candidate) => (candidate / durationS) * timeWidth >= 80) ?? 3600;
+      const step =
+        TICK_STEPS_S.find((candidate) => (candidate / durationS) * timeWidth >= 80) ?? 3600;
       ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
       ctx.textBaseline = "middle";
       ctx.textAlign = "left";
@@ -327,15 +344,32 @@ export function TimelineStrip({
       ctx.fill();
     }
     // usToX/xToUs derive only from width and durationUs, which are listed.
-  }, [model, geometry, width, durationUs, currentTimeUs, range, liveRange, overrides, laneIndex, hover, drag, t]);
+  }, [
+    model,
+    geometry,
+    width,
+    durationUs,
+    currentTimeUs,
+    range,
+    liveRange,
+    overrides,
+    laneIndex,
+    hover,
+    drag,
+    t,
+  ]);
 
   function localPoint(event: { clientX: number; clientY: number }): { x: number; y: number } {
     const bounds = canvasRef.current?.getBoundingClientRect();
-    return bounds ? { x: event.clientX - bounds.left, y: event.clientY - bounds.top } : { x: 0, y: 0 };
+    return bounds
+      ? { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+      : { x: 0, y: 0 };
   }
 
   function laneAt(y: number): number | null {
-    const index = Math.floor((y - geometry.lanesTop + geometry.laneGap / 2) / (geometry.laneHeight + geometry.laneGap));
+    const index = Math.floor(
+      (y - geometry.lanesTop + geometry.laneGap / 2) / (geometry.laneHeight + geometry.laneGap),
+    );
     return index >= 0 && index < model.lanes.length ? index : null;
   }
 
@@ -356,7 +390,9 @@ export function TimelineStrip({
 
   function handlePointerMove(event: PointerEvent<HTMLCanvasElement>) {
     const { x, y } = localPoint(event);
-    setHover(x >= GUTTER_PX ? { x, y, timeUs: xToUs(x), lane: y >= RULER_PX ? laneAt(y) : null } : null);
+    setHover(
+      x >= GUTTER_PX ? { x, y, timeUs: xToUs(x), lane: y >= RULER_PX ? laneAt(y) : null } : null,
+    );
     if (!drag) {
       return;
     }
@@ -437,10 +473,15 @@ export function TimelineStrip({
         {hover && !drag && (
           <div
             className="timeline-tip"
-            style={{ left: Math.min(Math.max(hover.x, 60), width - 60), top: hover.y < RULER_PX ? RULER_PX + 4 : hover.y + 14 }}
+            style={{
+              left: Math.min(Math.max(hover.x, 60), width - 60),
+              top: hover.y < RULER_PX ? RULER_PX + 4 : hover.y + 14,
+            }}
           >
             <span className="mono">{formatTimePrecise(hover.timeUs)}</span>
-            {hoverLane && hover.lane !== null && <span>{t("timeline.track", { n: hover.lane + 1 })}</span>}
+            {hoverLane && hover.lane !== null && (
+              <span>{t("timeline.track", { n: hover.lane + 1 })}</span>
+            )}
           </div>
         )}
       </div>

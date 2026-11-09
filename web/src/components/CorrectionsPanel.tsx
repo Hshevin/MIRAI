@@ -36,7 +36,8 @@ export function CorrectionsPanel({
 }: CorrectionsPanelProps) {
   const { t } = useI18n();
   const activities = useMemo(
-    () => (range && detections ? trackletsInRange(detections, range.startUs, range.endUs, personId) : []),
+    () =>
+      range && detections ? trackletsInRange(detections, range.startUs, range.endUs, personId) : [],
     [range, detections, personId],
   );
   const trackName = (id: string) => t("timeline.track", { n: trackNumbers.get(id) ?? "?" });
@@ -74,9 +75,18 @@ export function CorrectionsPanel({
           <>
             <div className="range-bar">
               <span className="mono">
-                {t("corr.range", { start: formatTime(range.startUs), end: formatTime(range.endUs) })}
+                {t("corr.range", {
+                  start: formatTime(range.startUs),
+                  end: formatTime(range.endUs),
+                })}
               </span>
-              <button type="button" className="icon-btn small" aria-label={t("corr.clear")} title={t("corr.clear")} onClick={() => onRange(null)}>
+              <button
+                type="button"
+                className="icon-btn small"
+                aria-label={t("corr.clear")}
+                title={t("corr.clear")}
+                onClick={() => onRange(null)}
+              >
                 <CloseIcon size={14} />
               </button>
             </div>
@@ -92,15 +102,23 @@ export function CorrectionsPanel({
                 );
                 const busy = saving !== null;
                 return (
-                  <li key={activity.trackletId} className={`track-row ${visible ? "is-visible" : "is-hidden"}`}>
+                  <li
+                    key={activity.trackletId}
+                    className={`track-row ${visible ? "is-visible" : "is-hidden"}`}
+                  >
                     <span className={`track-swatch kind-${activity.kind}`} aria-hidden="true" />
                     <div className="track-info">
                       <strong title={activity.trackletId}>{trackName(activity.trackletId)}</strong>
                       <span className="muted small">
-                        {t(`corr.kind.${activity.kind}`)} · {t("corr.detections", { count: activity.count })}
+                        {t(`corr.kind.${activity.kind}`)} ·{" "}
+                        {t("corr.detections", { count: activity.count })}
                       </span>
                     </div>
-                    <div className="segmented small" role="group" aria-label={trackName(activity.trackletId)}>
+                    <div
+                      className="segmented small"
+                      role="group"
+                      aria-label={trackName(activity.trackletId)}
+                    >
                       <button
                         type="button"
                         className={visible ? "active keep" : ""}

@@ -28,7 +28,15 @@ function formatClock(iso: string, locale: string): string {
       });
 }
 
-export function QueueDrawer({ open, jobs, error, onClose, onCancel, currentVideoId, onOpenVideo }: QueueDrawerProps) {
+export function QueueDrawer({
+  open,
+  jobs,
+  error,
+  onClose,
+  onCancel,
+  currentVideoId,
+  onOpenVideo,
+}: QueueDrawerProps) {
   const { t, locale } = useI18n();
   const activeCount = jobs.filter(isActiveJob).length;
 
@@ -47,7 +55,11 @@ export function QueueDrawer({ open, jobs, error, onClose, onCancel, currentVideo
 
   return (
     <>
-      <div className={`drawer-backdrop ${open ? "open" : ""}`} onClick={onClose} aria-hidden="true" />
+      <div
+        className={`drawer-backdrop ${open ? "open" : ""}`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
       <aside
         className={`drawer ${open ? "open" : ""}`}
         aria-labelledby="queue-title"
@@ -58,7 +70,12 @@ export function QueueDrawer({ open, jobs, error, onClose, onCancel, currentVideo
             <h2 id="queue-title">{t("queue.title")}</h2>
             <span className="muted small">{t("queue.activeCount", { count: activeCount })}</span>
           </div>
-          <button type="button" className="icon-btn" aria-label={t("queue.close")} onClick={onClose}>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={t("queue.close")}
+            onClick={onClose}
+          >
             <CloseIcon />
           </button>
         </header>
@@ -82,20 +99,36 @@ export function QueueDrawer({ open, jobs, error, onClose, onCancel, currentVideo
                         {kindLabel(t, job.kind)} · {formatClock(job.created_at, locale)}
                       </span>
                     </div>
-                    <span className={`chip status-${job.status}`}>{statusLabel(t, job.status)}</span>
+                    <span className={`chip status-${job.status}`}>
+                      {statusLabel(t, job.status)}
+                    </span>
                   </div>
                   {active && (
                     <ProgressBar
                       value={job.progress}
-                      label={job.cancel_requested ? t("queue.cancelling") : stageLabel(t, job.stage)}
+                      label={
+                        job.cancel_requested ? t("queue.cancelling") : stageLabel(t, job.stage)
+                      }
                     />
                   )}
                   {job.error_detail && <p className="inline-error small">{job.error_detail}</p>}
                   {(active || job.artifact_id || job.video_id !== currentVideoId) && (
                     <div className="job-item-actions">
-                      {job.video_id !== currentVideoId && <button type="button" className="btn subtle small" onClick={() => void onOpenVideo(job.video_id).then(onClose)}>{t("queue.open")}</button>}
+                      {job.video_id !== currentVideoId && (
+                        <button
+                          type="button"
+                          className="btn subtle small"
+                          onClick={() => void onOpenVideo(job.video_id).then(onClose)}
+                        >
+                          {t("queue.open")}
+                        </button>
+                      )}
                       {active && !job.cancel_requested && (
-                        <button type="button" className="btn subtle small" onClick={() => onCancel(job.id)}>
+                        <button
+                          type="button"
+                          className="btn subtle small"
+                          onClick={() => onCancel(job.id)}
+                        >
                           {t("queue.cancel")}
                         </button>
                       )}

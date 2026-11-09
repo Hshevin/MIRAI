@@ -62,6 +62,7 @@ uv run pytest
 uv run ruff check .
 uv run ruff format --check .
 cd web && npm install && npm run dev
+cd web && npm test && npm run format:check   # Prettier (web/.prettierrc.json); npm run format fixes
 ```
 
 FFmpeg and FFprobe 6.1+ must be on `PATH`. GPU jobs require a CUDA-capable NVIDIA GPU; the API health endpoint reports readiness.

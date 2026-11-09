@@ -24,7 +24,13 @@ export function PlayerControls({
   const { t } = useI18n();
   return (
     <div className="player-controls">
-      <button type="button" className="icon-btn" aria-label={t("player.back")} title={`${t("player.back")} (←)`} onClick={() => onSeekBy(-1_000_000)}>
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label={t("player.back")}
+        title={`${t("player.back")} (←)`}
+        onClick={() => onSeekBy(-1_000_000)}
+      >
         <BackIcon />
       </button>
       <button
@@ -36,7 +42,13 @@ export function PlayerControls({
       >
         {playing ? <PauseIcon size={18} /> : <PlayIcon size={18} />}
       </button>
-      <button type="button" className="icon-btn" aria-label={t("player.forward")} title={`${t("player.forward")} (→)`} onClick={() => onSeekBy(1_000_000)}>
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label={t("player.forward")}
+        title={`${t("player.forward")} (→)`}
+        onClick={() => onSeekBy(1_000_000)}
+      >
         <ForwardIcon />
       </button>
       <span className="timecode mono">

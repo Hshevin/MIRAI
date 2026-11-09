@@ -5,7 +5,8 @@ import type { RenderSettings } from "../types";
 import { DEFAULT_SETTINGS, isUnsafeSettings } from "../types";
 import { AlertIcon, InfoIcon } from "./Icons";
 
-type NumericKey = "mosaic_block" | "blur_sigma" | "mask_margin" | "edge_smoothing" | "mask_threshold";
+type NumericKey =
+  "mosaic_block" | "blur_sigma" | "mask_margin" | "edge_smoothing" | "mask_threshold";
 
 interface NumericField {
   key: NumericKey;
@@ -21,16 +22,56 @@ const GROUPS: { title: MessageKey; fields: NumericField[] }[] = [
   {
     title: "settings.groupEffect",
     fields: [
-      { key: "mosaic_block", label: "settings.mosaic", help: "settings.mosaicHelp", min: 4, max: 256, step: 1, format: (v) => `${Math.round(v)} px` },
-      { key: "blur_sigma", label: "settings.blur", help: "settings.blurHelp", min: 0, max: 128, step: 0.5, format: (v) => v.toFixed(1) },
+      {
+        key: "mosaic_block",
+        label: "settings.mosaic",
+        help: "settings.mosaicHelp",
+        min: 4,
+        max: 256,
+        step: 1,
+        format: (v) => `${Math.round(v)} px`,
+      },
+      {
+        key: "blur_sigma",
+        label: "settings.blur",
+        help: "settings.blurHelp",
+        min: 0,
+        max: 128,
+        step: 0.5,
+        format: (v) => v.toFixed(1),
+      },
     ],
   },
   {
     title: "settings.groupMask",
     fields: [
-      { key: "mask_margin", label: "settings.margin", help: "settings.marginHelp", min: -32, max: 32, step: 1, format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} px` },
-      { key: "edge_smoothing", label: "settings.smoothing", help: "settings.smoothingHelp", min: 0, max: 32, step: 1, format: (v) => `${Math.round(v)} px` },
-      { key: "mask_threshold", label: "settings.threshold", help: "settings.thresholdHelp", min: 0.05, max: 0.99, step: 0.01, format: (v) => v.toFixed(2) },
+      {
+        key: "mask_margin",
+        label: "settings.margin",
+        help: "settings.marginHelp",
+        min: -32,
+        max: 32,
+        step: 1,
+        format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} px`,
+      },
+      {
+        key: "edge_smoothing",
+        label: "settings.smoothing",
+        help: "settings.smoothingHelp",
+        min: 0,
+        max: 32,
+        step: 1,
+        format: (v) => `${Math.round(v)} px`,
+      },
+      {
+        key: "mask_threshold",
+        label: "settings.threshold",
+        help: "settings.thresholdHelp",
+        min: 0.05,
+        max: 0.99,
+        step: 0.01,
+        format: (v) => v.toFixed(2),
+      },
     ],
   },
 ];
@@ -166,10 +207,20 @@ export function SettingsPanel({ settings, onApply }: SettingsPanelProps) {
           >
             {t("settings.defaults")}
           </button>
-          <button type="button" className="btn ghost small" disabled={!dirty} onClick={() => setDraft(settings)}>
+          <button
+            type="button"
+            className="btn ghost small"
+            disabled={!dirty}
+            onClick={() => setDraft(settings)}
+          >
             {t("settings.reset")}
           </button>
-          <button type="button" className="btn primary small" disabled={!canApply} onClick={() => void apply()}>
+          <button
+            type="button"
+            className="btn primary small"
+            disabled={!canApply}
+            onClick={() => void apply()}
+          >
             {applying ? t("settings.applying") : t("settings.apply")}
           </button>
         </div>

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "format": "prettier --write src index.html",
+    "format:check": "prettier --check src index.html"
   },
   "dependencies": {
     "react": "18.3.1",
@@ -16,6 +18,7 @@
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",
     "@vitejs/plugin-react": "4.3.4",
+    "prettier": "3.9.10",
     "typescript": "5.7.3",
     "vite": "6.4.3",
     "vitest": "3.2.7"

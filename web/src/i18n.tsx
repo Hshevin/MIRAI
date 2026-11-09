@@ -33,7 +33,8 @@ const en = {
   "project.status.exported": "Exported",
   "project.status.editing": "Editing · {person_label} r{ordinal}",
   "delete.title": "Delete “{name}”?",
-  "delete.body": "This permanently deletes the source video, analysis, {revisions} revisions and all exports, freeing {size}. This cannot be undone.",
+  "delete.body":
+    "This permanently deletes the source video, analysis, {revisions} revisions and all exports, freeing {size}. This cannot be undone.",
   "delete.activeJobs": "Running {kinds} jobs will be cancelled.",
   "delete.confirm": "Delete",
   "delete.cancel": "Cancel",
@@ -107,7 +108,8 @@ const en = {
   "upload.resume": "Continue with {name}",
 
   "analyze.title": "Analyzing people",
-  "analyze.lead": "Detecting, tracking, and grouping every person in the video. You can leave this page; the job keeps running.",
+  "analyze.lead":
+    "Detecting, tracking, and grouping every person in the video. You can leave this page; the job keeps running.",
   "analyze.start": "Start analysis",
   "analyze.retry": "Retry analysis",
   "analyze.failed": "Analysis failed",
@@ -138,7 +140,8 @@ const en = {
   "select.pick": "Select a person to see details",
   "select.resumeTitle": "Continue where you left off",
   "select.resume": "Resume {name} · r{ordinal}",
-  "select.uncertainNote": "Uncertain appearances stay hidden unless you include them while editing.",
+  "select.uncertainNote":
+    "Uncertain appearances stay hidden unless you include them while editing.",
 
   "editor.keeping": "Keeping",
   "editor.revision": "Revision r{ordinal}",
@@ -219,11 +222,13 @@ const en = {
   "settings.smoothing": "Edge feather",
   "settings.smoothingHelp": "Softens the transition at the mask edge.",
   "settings.threshold": "Mask confidence",
-  "settings.thresholdHelp": "Pixels below this confidence stay hidden. Under 0.70 needs expert mode.",
+  "settings.thresholdHelp":
+    "Pixels below this confidence stay hidden. Under 0.70 needs expert mode.",
   "settings.mode": "Privacy mode",
   "settings.safe": "Safe",
   "settings.expert": "Expert",
-  "settings.warning": "These values expose more pixels than the safe defaults and weaken privacy protection.",
+  "settings.warning":
+    "These values expose more pixels than the safe defaults and weaken privacy protection.",
   "settings.ack": "I understand and accept the reduced protection.",
   "settings.needExpert": "Switch to Expert and confirm to apply.",
   "settings.apply": "Apply",
@@ -239,7 +244,8 @@ const en = {
   "export.previewHelp": "Renders a short sample so you can check the result.",
   "export.previewStart": "Generate preview",
   "export.renderTitle": "Full export",
-  "export.renderHelp": "Renders the whole video with only {name} clear, then muxes the original audio.",
+  "export.renderHelp":
+    "Renders the whole video with only {name} clear, then muxes the original audio.",
   "export.renderStart": "Export video",
   "export.rerun": "Run again",
   "export.download": "Download video",
@@ -299,7 +305,8 @@ const zh: Dictionary = {
   "project.status.exported": "已导出",
   "project.status.editing": "编辑中 · {person_label} r{ordinal}",
   "delete.title": "删除“{name}”？",
-  "delete.body": "将永久删除源视频、分析结果、{revisions} 个版本和所有导出文件，共释放 {size}。此操作无法撤销。",
+  "delete.body":
+    "将永久删除源视频、分析结果、{revisions} 个版本和所有导出文件，共释放 {size}。此操作无法撤销。",
   "delete.activeJobs": "正在进行的{kinds}任务会被取消。",
   "delete.confirm": "删除",
   "delete.cancel": "取消",

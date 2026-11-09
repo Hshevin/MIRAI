@@ -186,6 +186,8 @@ uv run pytest
 
 cd web
 npm run build
+npm test
+npm run format:check   # npm run format to fix
 ```
 
 ## Troubleshooting

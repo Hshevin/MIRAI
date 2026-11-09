@@ -7,7 +7,13 @@ import { ProgressBar } from "./ProgressBar";
 import { CpuIcon, MusicIcon, ShieldIcon, UploadIcon } from "./Icons";
 import type { Video } from "../types";
 
-export function UploadDropzone({ onUploaded, compact = false }: { onUploaded: (video: Video) => void; compact?: boolean }) {
+export function UploadDropzone({
+  onUploaded,
+  compact = false,
+}: {
+  onUploaded: (video: Video) => void;
+  compact?: boolean;
+}) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -27,10 +33,18 @@ export function UploadDropzone({ onUploaded, compact = false }: { onUploaded: (v
     setError(null);
     setProgress(0);
     try {
-      const video = await uploadVideo(next, (loaded, total) => setProgress(loaded / total), controller.signal);
+      const video = await uploadVideo(
+        next,
+        (loaded, total) => setProgress(loaded / total),
+        controller.signal,
+      );
       onUploaded(video);
     } catch (cause) {
-      setError(controller.signal.aborted ? t("upload.cancelled") : t("upload.failed", { error: errorMessage(cause) }));
+      setError(
+        controller.signal.aborted
+          ? t("upload.cancelled")
+          : t("upload.failed", { error: errorMessage(cause) }),
+      );
     } finally {
       abortRef.current = null;
       setFile(null);
@@ -53,11 +67,17 @@ export function UploadDropzone({ onUploaded, compact = false }: { onUploaded: (v
   const uploading = file !== null;
 
   return (
-    <section className={`upload-area ${compact ? "compact" : ""}`} aria-labelledby={compact ? undefined : "upload-title"} aria-label={compact ? t("upload.title") : undefined}>
-      {!compact && <header className="page-head center">
-        <h1 id="upload-title">{t("upload.title")}</h1>
-        <p className="lead">{t("upload.lead")}</p>
-      </header>}
+    <section
+      className={`upload-area ${compact ? "compact" : ""}`}
+      aria-labelledby={compact ? undefined : "upload-title"}
+      aria-label={compact ? t("upload.title") : undefined}
+    >
+      {!compact && (
+        <header className="page-head center">
+          <h1 id="upload-title">{t("upload.title")}</h1>
+          <p className="lead">{t("upload.lead")}</p>
+        </header>
+      )}
 
       {uploading ? (
         <div className="dropzone busy">
@@ -69,7 +89,11 @@ export function UploadDropzone({ onUploaded, compact = false }: { onUploaded: (v
           <div className="dropzone-progress">
             <ProgressBar value={progress} />
           </div>
-          <button type="button" className="btn subtle small" onClick={() => abortRef.current?.abort()}>
+          <button
+            type="button"
+            className="btn subtle small"
+            onClick={() => abortRef.current?.abort()}
+          >
             {t("upload.cancel")}
           </button>
         </div>
@@ -105,29 +129,31 @@ export function UploadDropzone({ onUploaded, compact = false }: { onUploaded: (v
         </p>
       )}
 
-      {!compact && <ul className="facts">
-        <li>
-          <CpuIcon size={18} />
-          <div>
-            <strong>{t("upload.fact1Title")}</strong>
-            <span>{t("upload.fact1")}</span>
-          </div>
-        </li>
-        <li>
-          <ShieldIcon size={18} />
-          <div>
-            <strong>{t("upload.fact2Title")}</strong>
-            <span>{t("upload.fact2")}</span>
-          </div>
-        </li>
-        <li>
-          <MusicIcon size={18} />
-          <div>
-            <strong>{t("upload.fact3Title")}</strong>
-            <span>{t("upload.fact3")}</span>
-          </div>
-        </li>
-      </ul>}
+      {!compact && (
+        <ul className="facts">
+          <li>
+            <CpuIcon size={18} />
+            <div>
+              <strong>{t("upload.fact1Title")}</strong>
+              <span>{t("upload.fact1")}</span>
+            </div>
+          </li>
+          <li>
+            <ShieldIcon size={18} />
+            <div>
+              <strong>{t("upload.fact2Title")}</strong>
+              <span>{t("upload.fact2")}</span>
+            </div>
+          </li>
+          <li>
+            <MusicIcon size={18} />
+            <div>
+              <strong>{t("upload.fact3Title")}</strong>
+              <span>{t("upload.fact3")}</span>
+            </div>
+          </li>
+        </ul>
+      )}
     </section>
   );
 }

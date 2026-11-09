@@ -61,10 +61,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
   }
-  return (
-    target.isContentEditable ||
-    ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
-  );
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
 export function EditorView({
@@ -115,7 +112,10 @@ export function EditorView({
     let cancelled = false;
     getRevisionDetail(revision.id)
       .then((next) => !cancelled && setDetail(next))
-      .catch((cause) => !cancelled && notify("error", t("toast.loadFailed", { error: errorMessage(cause) })));
+      .catch(
+        (cause) =>
+          !cancelled && notify("error", t("toast.loadFailed", { error: errorMessage(cause) })),
+      );
     return () => {
       cancelled = true;
     };
@@ -252,7 +252,10 @@ export function EditorView({
           break;
         case "x":
         case "X":
-          setTool((current) => ({ ...current, polarity: current.polarity === "keep" ? "hide" : "keep" }));
+          setTool((current) => ({
+            ...current,
+            polarity: current.polarity === "keep" ? "hide" : "keep",
+          }));
           break;
         case "Escape":
           setRange(null);
@@ -384,7 +387,10 @@ export function EditorView({
           </div>
 
           <div className="stage-meta">
-            <span className="chip brand mono" title={currentDetail ? undefined : t("editor.loading")}>
+            <span
+              className="chip brand mono"
+              title={currentDetail ? undefined : t("editor.loading")}
+            >
               {t("editor.revision", { ordinal: revision.ordinal })}
             </span>
             <button
@@ -411,7 +417,9 @@ export function EditorView({
                 preload="auto"
                 muted={muted}
                 playsInline
-                onTimeUpdate={(event) => setCurrentTimeUs(Math.round(event.currentTarget.currentTime * 1_000_000))}
+                onTimeUpdate={(event) =>
+                  setCurrentTimeUs(Math.round(event.currentTarget.currentTime * 1_000_000))
+                }
                 onPlay={() => setPlaying(true)}
                 onPause={() => setPlaying(false)}
                 onEnded={() => setPlaying(false)}
@@ -429,7 +437,9 @@ export function EditorView({
             </>
           )}
           <div className="viewer-hint">
-            {tool.shape === "point" ? t("tool.hintPoint", { action }) : t("tool.hintBox", { action })}
+            {tool.shape === "point"
+              ? t("tool.hintPoint", { action })
+              : t("tool.hintBox", { action })}
             <span className="muted"> · {t("tool.keys")}</span>
           </div>
         </div>
@@ -459,11 +469,18 @@ export function EditorView({
               onClick={() => setTab(item.id)}
             >
               {t(item.label)}
-              {item.id === "corrections" && overrides.length > 0 && <span className="count">{overrides.length}</span>}
+              {item.id === "corrections" && overrides.length > 0 && (
+                <span className="count">{overrides.length}</span>
+              )}
             </button>
           ))}
         </div>
-        <div className="inspector-body" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        <div
+          className="inspector-body"
+          role="tabpanel"
+          id={`panel-${tab}`}
+          aria-labelledby={`tab-${tab}`}
+        >
           {tab === "corrections" && person && (
             <CorrectionsPanel
               detections={detections}
@@ -479,7 +496,9 @@ export function EditorView({
               onDecide={(trackletId, decision) => void saveOverride(trackletId, decision)}
             />
           )}
-          {tab === "settings" && <SettingsPanel settings={revision.settings} onApply={applySettings} />}
+          {tab === "settings" && (
+            <SettingsPanel settings={revision.settings} onApply={applySettings} />
+          )}
           {tab === "export" && (
             <ExportPanel
               videoId={video.id}
@@ -508,7 +527,9 @@ export function EditorView({
             {t("timeline.failed", { error: timelineError })}
           </p>
         )}
-        {detections === null && !timelineError && <p className="muted small">{t("timeline.loading")}</p>}
+        {detections === null && !timelineError && (
+          <p className="muted small">{t("timeline.loading")}</p>
+        )}
         {detections !== null && person && (
           <TimelineStrip
             detections={detections}

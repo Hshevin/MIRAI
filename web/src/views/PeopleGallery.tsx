@@ -58,7 +58,9 @@ export function PeopleGallery({
       {latest && latestPerson && (
         <button type="button" className="resume-card" onClick={() => onResume(latest)}>
           <span className="muted small">{t("select.resumeTitle")}</span>
-          <strong>{t("select.resume", { name: latestPerson.display_label, ordinal: latest.ordinal })}</strong>
+          <strong>
+            {t("select.resume", { name: latestPerson.display_label, ordinal: latest.ordinal })}
+          </strong>
           <ArrowRightIcon />
         </button>
       )}
@@ -88,7 +90,10 @@ export function PeopleGallery({
                   <Thumb id={person.thumbnails[0]?.id} alt={person.display_label} />
                   <span className="person-label">{person.display_label}</span>
                   {person.ambiguous_appearances > 0 && (
-                    <span className="person-flag" title={t("select.uncertain", { count: person.ambiguous_appearances })}>
+                    <span
+                      className="person-flag"
+                      title={t("select.uncertain", { count: person.ambiguous_appearances })}
+                    >
                       <AlertIcon size={12} />
                       {person.ambiguous_appearances}
                     </span>
@@ -145,7 +150,9 @@ export function PeopleGallery({
                   disabled={creating}
                   onClick={() => onConfirm(focused)}
                 >
-                  {creating ? t("select.creating") : t("select.confirm", { name: focused.display_label })}
+                  {creating
+                    ? t("select.creating")
+                    : t("select.confirm", { name: focused.display_label })}
                 </button>
               </>
             ) : (

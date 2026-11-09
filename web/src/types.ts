@@ -178,14 +178,34 @@ export function isTerminalJob(job: Pick<Job, "status">): boolean {
 }
 
 export type JobBrief = Pick<Job, "id" | "kind" | "status" | "stage" | "progress">;
-export interface AnalysisBrief extends JobBrief { error_detail: string | null }
+export interface AnalysisBrief extends JobBrief {
+  error_detail: string | null;
+}
 export interface RevisionBrief {
-  id: string; ordinal: number; person_id: string; person_label: string; created_at: string;
+  id: string;
+  ordinal: number;
+  person_id: string;
+  person_label: string;
+  created_at: string;
 }
 export interface RenderBrief {
-  artifact_id: string; revision_id: string | null; revision_ordinal: number | null; created_at: string;
+  artifact_id: string;
+  revision_id: string | null;
+  revision_ordinal: number | null;
+  created_at: string;
 }
-export interface VideoSummary extends Pick<Video, "id" | "original_name" | "width" | "height" | "duration_us" | "size_bytes" | "has_audio" | "created_at" | "state"> {
+export interface VideoSummary extends Pick<
+  Video,
+  | "id"
+  | "original_name"
+  | "width"
+  | "height"
+  | "duration_us"
+  | "size_bytes"
+  | "has_audio"
+  | "created_at"
+  | "state"
+> {
   last_activity_at: string;
   storage_bytes: number;
   cover_thumbnail_id: string | null;
@@ -196,5 +216,13 @@ export interface VideoSummary extends Pick<Video, "id" | "original_name" | "widt
   revision_count: number;
   latest_render: RenderBrief | null;
 }
-export interface VideoList { items: VideoSummary[]; total: number; storage_bytes_total: number }
-export interface VideoDeleteResult { id: string; status: "deleted" | "deleting"; cancelled_job_ids: string[] }
+export interface VideoList {
+  items: VideoSummary[];
+  total: number;
+  storage_bytes_total: number;
+}
+export interface VideoDeleteResult {
+  id: string;
+  status: "deleted" | "deleting";
+  cancelled_job_ids: string[];
+}

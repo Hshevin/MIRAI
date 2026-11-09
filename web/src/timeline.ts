@@ -84,7 +84,10 @@ export function buildTimelineModel(
     const cell = KIND_TO_CELL[kind];
     const column =
       durationUs > 0
-        ? Math.min(safeColumns - 1, Math.max(0, Math.floor((detection.timestamp_us / durationUs) * safeColumns)))
+        ? Math.min(
+            safeColumns - 1,
+            Math.max(0, Math.floor((detection.timestamp_us / durationUs) * safeColumns)),
+          )
         : 0;
     if (cell > lane.cells[column]) {
       lane.cells[column] = cell;

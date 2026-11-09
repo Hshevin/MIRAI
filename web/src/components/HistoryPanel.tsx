@@ -22,7 +22,10 @@ export function HistoryPanel({ history, currentId, busy, onRestore }: HistoryPan
         {[...history].reverse().map((entry) => {
           const current = entry.id === currentId;
           return (
-            <li key={entry.id} className={`history-item change-${entry.change} ${current ? "current" : ""}`}>
+            <li
+              key={entry.id}
+              className={`history-item change-${entry.change} ${current ? "current" : ""}`}
+            >
               <span className="history-dot" aria-hidden="true" />
               <div className="history-text">
                 <strong>{t(`history.change.${entry.change}`)}</strong>
@@ -33,7 +36,12 @@ export function HistoryPanel({ history, currentId, busy, onRestore }: HistoryPan
               {current ? (
                 <span className="chip brand">{t("history.current")}</span>
               ) : (
-                <button type="button" className="btn ghost small" disabled={busy} onClick={() => onRestore(entry.id)}>
+                <button
+                  type="button"
+                  className="btn ghost small"
+                  disabled={busy}
+                  onClick={() => onRestore(entry.id)}
+                >
                   {t("history.restore")}
                 </button>
               )}

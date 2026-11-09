@@ -21,7 +21,15 @@ function latestJob(jobs: QueueJob[], videoId: string, kind: string): QueueJob | 
   return jobs.find((job) => job.video_id === videoId && job.kind === kind) ?? null;
 }
 
-export function ExportPanel({ videoId, personLabel, revision, ordinals, jobs, onStart, onCancel }: ExportPanelProps) {
+export function ExportPanel({
+  videoId,
+  personLabel,
+  revision,
+  ordinals,
+  jobs,
+  onStart,
+  onCancel,
+}: ExportPanelProps) {
   const { t } = useI18n();
 
   function card(kind: "preview" | "render") {
@@ -31,7 +39,8 @@ export function ExportPanel({ videoId, personLabel, revision, ordinals, jobs, on
     const stale = job !== null && job.revision_id !== revision.id;
     const staleOrdinal = job?.revision_id ? ordinals.get(job.revision_id) : undefined;
     const title = kind === "preview" ? t("export.previewTitle") : t("export.renderTitle");
-    const help = kind === "preview" ? t("export.previewHelp") : t("export.renderHelp", { name: personLabel });
+    const help =
+      kind === "preview" ? t("export.previewHelp") : t("export.renderHelp", { name: personLabel });
     const start = kind === "preview" ? t("export.previewStart") : t("export.renderStart");
 
     return (
@@ -65,7 +74,12 @@ export function ExportPanel({ videoId, personLabel, revision, ordinals, jobs, on
         )}
 
         {done && job.artifact_id && kind === "preview" && (
-          <video key={job.artifact_id} className="export-video" controls src={artifactUrl(job.artifact_id)} />
+          <video
+            key={job.artifact_id}
+            className="export-video"
+            controls
+            src={artifactUrl(job.artifact_id)}
+          />
         )}
 
         <div className="actions">
@@ -97,4 +111,3 @@ export function ExportPanel({ videoId, personLabel, revision, ordinals, jobs, on
     </div>
   );
 }
-

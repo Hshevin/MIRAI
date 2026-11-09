@@ -128,7 +128,10 @@ export function PromptOverlay({
     };
   }, [videoRef]);
 
-  function toNormalized(event: { clientX: number; clientY: number }, target: Element): [number, number] {
+  function toNormalized(
+    event: { clientX: number; clientY: number },
+    target: Element,
+  ): [number, number] {
     const bounds = target.getBoundingClientRect();
     return [
       clamp01((event.clientX - bounds.left) / Math.max(1, bounds.width)),
@@ -184,7 +187,10 @@ export function PromptOverlay({
       void send({ kind: "point", positive: start.positive, coordinates: [x, y] });
       return;
     }
-    const moved = Math.hypot(event.clientX - start.startClientX, event.clientY - start.startClientY);
+    const moved = Math.hypot(
+      event.clientX - start.startClientX,
+      event.clientY - start.startClientY,
+    );
     if (moved < DRAG_THRESHOLD_PX) {
       onInvalidBox();
       return;
@@ -221,7 +227,12 @@ export function PromptOverlay({
       onPointerCancel={() => setDrag(null)}
     >
       {visible.map((prompt) => (
-        <Marker key={prompt.id} kind={prompt.kind} positive={prompt.positive} coordinates={prompt.coordinates} />
+        <Marker
+          key={prompt.id}
+          kind={prompt.kind}
+          positive={prompt.positive}
+          coordinates={prompt.coordinates}
+        />
       ))}
       {pending && <Marker {...pending} pending />}
       {drag && tool.shape === "box" && (

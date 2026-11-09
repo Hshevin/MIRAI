@@ -119,7 +119,14 @@ describe("buildTimelineModel", () => {
 
   it("buckets detections into the matching column", () => {
     const model = buildTimelineModel(
-      [detection({ tracklet_id: "a", timestamp_us: 500_000, person_id: "p1", membership_status: "confirmed" })],
+      [
+        detection({
+          tracklet_id: "a",
+          timestamp_us: 500_000,
+          person_id: "p1",
+          membership_status: "confirmed",
+        }),
+      ],
       1_000_000,
       10,
       "p1",
@@ -131,7 +138,12 @@ describe("buildTimelineModel", () => {
   it("keeps the highest-priority kind when detections share a column", () => {
     const detections = [
       detection({ tracklet_id: "a", timestamp_us: 100_000, membership_status: null }),
-      detection({ tracklet_id: "a", timestamp_us: 190_000, person_id: "p1", membership_status: "ambiguous" }),
+      detection({
+        tracklet_id: "a",
+        timestamp_us: 190_000,
+        person_id: "p1",
+        membership_status: "ambiguous",
+      }),
     ];
     const model = buildTimelineModel(detections, 1_000_000, 5, "p1");
     // Both detections land in column 0; ambiguous outranks other.
@@ -150,7 +162,12 @@ describe("trackletsInRange", () => {
   const detections = [
     detection({ tracklet_id: "a", timestamp_us: 1_000_000 }),
     detection({ tracklet_id: "a", timestamp_us: 2_000_000 }),
-    detection({ tracklet_id: "b", timestamp_us: 2_500_000, person_id: "p1", membership_status: "confirmed" }),
+    detection({
+      tracklet_id: "b",
+      timestamp_us: 2_500_000,
+      person_id: "p1",
+      membership_status: "confirmed",
+    }),
     detection({ tracklet_id: "c", timestamp_us: 9_000_000 }),
   ];
 
@@ -199,8 +216,18 @@ describe("trackletNumbers", () => {
 });
 
 describe("effectiveVisibility", () => {
-  const include = { tracklet_id: "a", start_us: 0, end_us: 1_000_000, decision: "include" as const };
-  const exclude = { tracklet_id: "a", start_us: 500_000, end_us: 2_000_000, decision: "exclude" as const };
+  const include = {
+    tracklet_id: "a",
+    start_us: 0,
+    end_us: 1_000_000,
+    decision: "include" as const,
+  };
+  const exclude = {
+    tracklet_id: "a",
+    start_us: 500_000,
+    end_us: 2_000_000,
+    decision: "exclude" as const,
+  };
 
   it("defaults to visible only for the kept person", () => {
     expect(effectiveVisibility("selected", "a", [], 0, 1)).toBe(true);
