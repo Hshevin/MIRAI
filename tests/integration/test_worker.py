@@ -1,8 +1,12 @@
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from figure_detection.domain.enums import JobKind, JobStatus, VideoState
+from figure_detection.settings import get_settings
 from figure_detection.storage.database import Base
 from figure_detection.storage.models import Job, Video
 from figure_detection.worker import main
@@ -77,3 +81,47 @@ def test_deleted_video_job_is_cancelled(tmp_path, monkeypatch):
     main.process_job(job_id)
     with sessions() as session:
         assert session.get(Job, job_id).status == JobStatus.CANCELLED
+
+
+@pytest.mark.parametrize(("lease_offset", "purged"), [(-3600, True), (3600, False)])
+def test_deleted_video_with_crashed_job_is_purged(tmp_path, monkeypatch, lease_offset, purged):
+    """A running job whose worker died must not block purging a deleted video forever."""
+    monkeypatch.setenv("FIGURE_DETECTION_RUNTIME_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    engine = create_engine(f"sqlite:///{tmp_path / 'crashed.db'}")
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(main, "SessionLocal", sessions)
+    video_id = str(uuid4())
+    project = get_settings().projects_dir / video_id
+    project.mkdir(parents=True)
+    (project / "source.bin").write_bytes(b"video")
+    try:
+        with sessions() as session:
+            session.add(
+                Video(
+                    id=video_id,
+                    original_name="crashed",
+                    source_path=str(project / "source.bin"),
+                    sha256="0" * 64,
+                    size_bytes=5,
+                    state=VideoState.DELETED,
+                )
+            )
+            session.add(
+                Job(
+                    video_id=video_id,
+                    kind=JobKind.RENDER,
+                    status=JobStatus.RUNNING,
+                    cancel_requested=True,
+                    lease_expires_at=datetime.now(UTC) + timedelta(seconds=lease_offset),
+                )
+            )
+            session.commit()
+        main.cleanup_projects()
+        assert main.lease_next_job("restarted") is None
+        with sessions() as session:
+            assert (session.get(Video, video_id) is None) is purged
+        assert project.exists() is not purged
+    finally:
+        get_settings.cache_clear()

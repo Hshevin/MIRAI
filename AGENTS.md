@@ -68,8 +68,7 @@ FFmpeg and FFprobe 6.1+ must be on `PATH`. GPU jobs require a CUDA-capable NVIDI
 
 ## Data and API invariants
 
-- Project deletion is two-phase: tombstone and cancel jobs first; purge rows and files only after running jobs stop. Purge explicitly deletes dependent rows in order without relying on foreign-key cascades. DELETED videos and their resources are invisible to API callers.
-
+- Project deletion is two-phase: tombstone and cancel jobs first; purge rows and files only after running jobs stop (a running job whose lease has expired counts as stopped). Purge explicitly deletes dependent rows in order without relying on foreign-key cascades. DELETED videos and their resources are invisible to API callers.
 - Store exact integer PTS and time-base numerator/denominator. Never derive VFR identity from nominal FPS alone.
 - Tracker state never crosses a scene cut.
 - Temporally overlapping tracklets cannot belong to the same global identity automatically.
@@ -115,7 +114,5 @@ Milestones 0–2 and the functional render slice are complete: revisioned select
 - 2026-11-09: The UI is a four-step flow (Upload → Analyze → Choose person → Edit & export). Upload starts on file choice and queues analysis automatically; the editor is a full-height workspace (video + custom controls, inspector tabs for corrections/look/export/history, bottom timeline); jobs live in a drawer that never replaces the current view.
 - 2026-11-09: The UI is bilingual (zh/en, persisted in localStorage). Colour is semantic: `--clear` means pixels kept clear, `--masked` hidden, `--warn` uncertain, `--danger` errors/hide; `--brand` is for interaction only.
 - 2026-11-09: Settings edits chain from the current revision so they no longer discard corrections; revision detail, per-video revision listing, and job `revision_id` in the queue let the UI restore state after reload.
-
 - 2026-11-09: Project summaries derive activity, analysis, revision, and export state independently; deletion tombstones projects before cancelling work and explicitly purging database rows, then safely removing project files.
-
 - 2026-11-09: The first workflow step is the Video project home. Cards and queue entries share project reopening, revision restore is keyed by video, and destructive confirmation uses a native modal dialog with cancel focused by default.

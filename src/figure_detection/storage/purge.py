@@ -4,10 +4,11 @@ import logging
 import os
 import shutil
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from figure_detection.domain.enums import JobStatus, VideoState
@@ -77,6 +78,21 @@ def purge_video(session: Session, video_id: str) -> bool:
 
 def purge_deleted_videos(session: Session) -> list[str]:
     ids = session.scalars(select(Video.id).where(Video.state == VideoState.DELETED)).all()
+    if not ids:
+        return []
+    # Workers never lease jobs of deleted videos, so a running job whose lease
+    # expired (its worker died) would otherwise block the purge forever.
+    session.execute(
+        update(Job)
+        .where(
+            Job.video_id.in_(ids),
+            Job.status == JobStatus.RUNNING,
+            Job.lease_expires_at.is_not(None),
+            Job.lease_expires_at < datetime.now(UTC),
+        )
+        .values(status=JobStatus.CANCELLED, stage="cancelled", lease_owner=None)
+    )
+    session.commit()
     return [video_id for video_id in ids if purge_video(session, video_id)]
 
 
